@@ -1,0 +1,10 @@
+.DS_Store
+.venv/
+.pytest_cache/
+.learnings/
+__pycache__/
+*.pyc
+
+outputs/
+checkpoints/
+tmp/

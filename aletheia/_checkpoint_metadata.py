@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Any, Dict, Optional, Union
+
+import torch
+
+from .aletheia_config import ConfigBundle
+
+logger = logging.getLogger("aletheia.checkpoint_metadata")
+
+
+def _torch_load_compat(
+    path: Path,
+    *,
+    map_location: Any,
+    weights_only: bool,
+) -> Any:
+    try:
+        return torch.load(path, map_location=map_location, weights_only=weights_only)
+    except TypeError as exc:
+        if "unexpected keyword argument 'weights_only'" not in str(exc):
+            raise
+        return torch.load(path, map_location=map_location)
+
+
+def read_checkpoint(
+    path: Union[str, Path],
+    *,
+    map_location: Any = "cpu",
+    weights_only: bool = False,
+    allow_unsafe_fallback: bool = False,
+    trusted_source: bool = False,
+    fail_soft: bool = False,
+) -> Any:
+    """Read a checkpoint payload with the repository's unified load semantics."""
+    checkpoint_path = Path(path)
+    try:
+        from .aletheia_foundation import safe_torch_load
+
+        return safe_torch_load(
+            checkpoint_path,
+            map_location=map_location,
+            weights_only=weights_only,
+            allow_unsafe_fallback=allow_unsafe_fallback,
+            trusted_source=trusted_source,
+        )
+    except ImportError:
+        return _torch_load_compat(
+            checkpoint_path,
+            map_location=map_location,
+            weights_only=weights_only,
+        )
+    except Exception as exc:
+        if not fail_soft:
+            raise
+        logger.debug(
+            "Failed to read checkpoint metadata from %s: %s",
+            checkpoint_path,
+            exc,
+        )
+        return None
+
+
+def read_checkpoint_metadata(
+    path: Union[str, Path],
+    *,
+    allow_unsafe_fallback: bool = False,
+) -> Any:
+    """Read checkpoint payload for metadata inspection, returning ``None`` on soft failure."""
+    return read_checkpoint(
+        path,
+        map_location="cpu",
+        weights_only=False,
+        allow_unsafe_fallback=allow_unsafe_fallback,
+        fail_soft=True,
+    )
+
+
+def read_agent_creation_overrides_from_checkpoint(
+    path: Union[str, Path],
+    *,
+    allow_unsafe_fallback: bool = False,
+) -> Optional[Dict[str, Any]]:
+    """Read create_agent() overrides from checkpoint bootstrap metadata."""
+    checkpoint = read_checkpoint_metadata(
+        path,
+        allow_unsafe_fallback=allow_unsafe_fallback,
+    )
+    return ConfigBundle.agent_creation_overrides_from_checkpoint_metadata(checkpoint)
+
+
+def read_training_checkpoint(
+    path: Union[str, Path],
+    *,
+    map_location: Any = "cpu",
+    allow_unsafe_fallback: bool = False,
+    trusted_source: bool = False,
+) -> Any:
+    """Read a training checkpoint using the repository's canonical training reader semantics."""
+    return read_checkpoint(
+        path,
+        map_location=map_location,
+        weights_only=True,
+        allow_unsafe_fallback=allow_unsafe_fallback,
+        trusted_source=trusted_source,
+        fail_soft=False,
+    )

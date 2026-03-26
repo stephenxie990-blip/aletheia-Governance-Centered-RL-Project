@@ -1,0 +1,1201 @@
+{
+  "num_runs": 3,
+  "runs": [
+    {
+      "run_dir": "/Users/zhangsan/Desktop/缸中之脑v5.6/outputs/exp_seed42_v123_release_tail_sustain_only_2500_20260314_01",
+      "num_metric_rows": 50,
+      "num_trace_rows": 50,
+      "eval_summary": {
+        "available": true,
+        "peak_step": 750,
+        "peak_mean": 355.8,
+        "final_step": 2500,
+        "final_mean": 191.6,
+        "drop_from_peak": -164.20000000000002,
+        "records": [
+          {
+            "step": 250,
+            "mean": 15.9
+          },
+          {
+            "step": 500,
+            "mean": 107.6
+          },
+          {
+            "step": 750,
+            "mean": 355.8
+          },
+          {
+            "step": 1000,
+            "mean": 183.5
+          },
+          {
+            "step": 1250,
+            "mean": 177.4
+          },
+          {
+            "step": 1500,
+            "mean": 167.1
+          },
+          {
+            "step": 1750,
+            "mean": 175.5
+          },
+          {
+            "step": 2000,
+            "mean": 125.6
+          },
+          {
+            "step": 2250,
+            "mean": 132.1
+          },
+          {
+            "step": 2500,
+            "mean": 191.6
+          }
+        ]
+      },
+      "signal_stats": {
+        "imagination_trust": {
+          "mean": 0.47168218791609007,
+          "min": 0.1412912368774414,
+          "min_step": 2300,
+          "max": 0.7933634584148725,
+          "max_step": 600,
+          "last": 0.3325525159637134,
+          "focus_step": 2300,
+          "focus_stage": "persistence",
+          "focus_value": 0.1412912368774414
+        },
+        "trigger_effectiveness": {
+          "mean": 0.41999337792741137,
+          "min": 0.06135734096169472,
+          "min_step": 2300,
+          "max": 0.8326994881033898,
+          "max_step": 2450,
+          "last": 0.7985176265239716,
+          "focus_step": 2300,
+          "focus_stage": "persistence",
+          "focus_value": 0.06135734096169472
+        },
+        "handoff_necessity": {
+          "mean": 0.49153806378212617,
+          "min": 0.08509535623921288,
+          "min_step": 150,
+          "max": 1.0,
+          "max_step": 1950,
+          "last": 0.7521622177627352,
+          "focus_step": 1950,
+          "focus_stage": "persistence",
+          "focus_value": 1.0
+        },
+        "model_freshness": {
+          "mean": 0.6494490222709264,
+          "min": 0.31672250371509125,
+          "min_step": 2300,
+          "max": 0.8957958539765741,
+          "max_step": 900,
+          "last": 0.558227446998987,
+          "focus_step": 2300,
+          "focus_stage": "persistence",
+          "focus_value": 0.31672250371509125
+        }
+      },
+      "post_peak_signal_stats": {
+        "imagination_trust": {
+          "mean": 0.4081044655707147,
+          "min": 0.1412912368774414,
+          "min_step": 2300,
+          "max": 0.7903926427165666,
+          "max_step": 900,
+          "last": 0.3325525159637134,
+          "focus_step": 2300,
+          "focus_stage": "persistence",
+          "focus_value": 0.1412912368774414
+        },
+        "trigger_effectiveness": {
+          "mean": 0.4949694479924316,
+          "min": 0.06135734096169472,
+          "min_step": 2300,
+          "max": 0.8326994881033898,
+          "max_step": 2450,
+          "last": 0.7985176265239716,
+          "focus_step": 2300,
+          "focus_stage": "persistence",
+          "focus_value": 0.06135734096169472
+        },
+        "handoff_necessity": {
+          "mean": 0.6193198511137874,
+          "min": 0.1275191836886936,
+          "min_step": 950,
+          "max": 1.0,
+          "max_step": 1950,
+          "last": 0.7521622177627352,
+          "focus_step": 1950,
+          "focus_stage": "persistence",
+          "focus_value": 1.0
+        },
+        "model_freshness": {
+          "mean": 0.5739594345606955,
+          "min": 0.31672250371509125,
+          "min_step": 2300,
+          "max": 0.8957958539765741,
+          "max_step": 900,
+          "last": 0.558227446998987,
+          "focus_step": 2300,
+          "focus_stage": "persistence",
+          "focus_value": 0.31672250371509125
+        }
+      },
+      "stage_signal_stats": {
+        "idle": {
+          "rows": 15,
+          "step_min": 50,
+          "step_max": 750,
+          "imagination_trust_mean": 0.6382033106229372,
+          "trigger_effectiveness_mean": 0.22575907808200765,
+          "handoff_necessity_mean": 0.1661397853162554,
+          "model_freshness_mean": 0.8410038597660243,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": 1.751460102200508
+        },
+        "persistence": {
+          "rows": 4,
+          "step_min": 1950,
+          "step_max": 2300,
+          "imagination_trust_mean": 0.20994618386030198,
+          "trigger_effectiveness_mean": 0.08799863299354911,
+          "handoff_necessity_mean": 1.0,
+          "model_freshness_mean": 0.39661101570849616,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": -6.634494423866272
+        },
+        "persistence_release": {
+          "rows": 4,
+          "step_min": 1300,
+          "step_max": 1450,
+          "imagination_trust_mean": 0.29841669102509816,
+          "trigger_effectiveness_mean": 0.15163119016215207,
+          "handoff_necessity_mean": 0.85,
+          "model_freshness_mean": 0.5145452237621777,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": -5.993236660957336
+        },
+        "post_entry": {
+          "rows": 4,
+          "step_min": 800,
+          "step_max": 1050,
+          "imagination_trust_mean": 0.7510337292527158,
+          "trigger_effectiveness_mean": 0.6015700045041741,
+          "handoff_necessity_mean": 0.1611046522855759,
+          "model_freshness_mean": 0.8494637714101312,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": -0.4648054428398609
+        },
+        "post_entry_soft": {
+          "rows": 5,
+          "step_min": 950,
+          "step_max": 1200,
+          "imagination_trust_mean": 0.5339412569999695,
+          "trigger_effectiveness_mean": 0.37100873574614524,
+          "handoff_necessity_mean": 0.32520350939697695,
+          "model_freshness_mean": 0.6126146074330641,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": -3.43373863697052
+        },
+        "trigger": {
+          "rows": 18,
+          "step_min": 1250,
+          "step_max": 2500,
+          "imagination_trust_mean": 0.3502092797171186,
+          "trigger_effectiveness_mean": 0.6885244297650126,
+          "handoff_necessity_mean": 0.6896872362908493,
+          "model_freshness_mean": 0.5417688964648563,
+          "release_progress_mean": 0.8722222222222222,
+          "online_adv_mean": -5.169693854120043
+        }
+      },
+      "checkpoint_signals": [
+        {
+          "step": 250,
+          "eval_mean": 15.9,
+          "stage": "idle",
+          "imagination_trust": 0.5613543078303337,
+          "trigger_effectiveness": 0.22749999999999998,
+          "handoff_necessity": 0.10834473487403663,
+          "model_freshness": 0.8462848827499482
+        },
+        {
+          "step": 500,
+          "eval_mean": 107.6,
+          "stage": "idle",
+          "imagination_trust": 0.5790206794937452,
+          "trigger_effectiveness": 0.22749999999999998,
+          "handoff_necessity": 0.17837930288579723,
+          "model_freshness": 0.8237309971559379
+        },
+        {
+          "step": 750,
+          "eval_mean": 355.8,
+          "stage": "idle",
+          "imagination_trust": 0.6807010240852833,
+          "trigger_effectiveness": 0.20561740258708594,
+          "handoff_necessity": 0.2107082307338715,
+          "model_freshness": 0.8051464271290849
+        },
+        {
+          "step": 1000,
+          "eval_mean": 183.5,
+          "stage": "post_entry_soft",
+          "imagination_trust": 0.7293165832757948,
+          "trigger_effectiveness": 0.5418829172849655,
+          "handoff_necessity": 0.1683346990082,
+          "model_freshness": 0.8105619703200128
+        },
+        {
+          "step": 1250,
+          "eval_mean": 177.4,
+          "stage": "trigger",
+          "imagination_trust": 0.33629401127497355,
+          "trigger_effectiveness": 0.15186646139621734,
+          "handoff_necessity": 0.5433990155718592,
+          "model_freshness": 0.39888536273274156
+        },
+        {
+          "step": 1500,
+          "eval_mean": 167.1,
+          "stage": "trigger",
+          "imagination_trust": 0.6244948476552963,
+          "trigger_effectiveness": 0.7736258730888368,
+          "handoff_necessity": 0.2630762867172559,
+          "model_freshness": 0.7423473109155893
+        },
+        {
+          "step": 1750,
+          "eval_mean": 175.5,
+          "stage": "trigger",
+          "imagination_trust": 0.28051125605901084,
+          "trigger_effectiveness": 0.7384531810879708,
+          "handoff_necessity": 0.7869775480694241,
+          "model_freshness": 0.4855986671530538
+        },
+        {
+          "step": 2000,
+          "eval_mean": 125.6,
+          "stage": "trigger",
+          "imagination_trust": 0.2513368546962738,
+          "trigger_effectiveness": 0.7561852023005485,
+          "handoff_necessity": 0.8455639203389486,
+          "model_freshness": 0.4915506994078557
+        },
+        {
+          "step": 2250,
+          "eval_mean": 132.1,
+          "stage": "trigger",
+          "imagination_trust": 0.4149705896774928,
+          "trigger_effectiveness": 0.4881372928619385,
+          "handoff_necessity": 0.6546961824099223,
+          "model_freshness": 0.5675280166814725
+        },
+        {
+          "step": 2500,
+          "eval_mean": 191.6,
+          "stage": "trigger",
+          "imagination_trust": 0.3325525159637134,
+          "trigger_effectiveness": 0.7985176265239716,
+          "handoff_necessity": 0.7521622177627352,
+          "model_freshness": 0.558227446998987
+        }
+      ],
+      "likely_causes": [
+        "post_peak_imagination_trust_low",
+        "trigger_release_window_carries_high_handoff_pressure",
+        "persistence_release_inherits_low_trust",
+        "persistence_phase_low_model_freshness"
+      ],
+      "trace_excerpt": [
+        {
+          "step": 50,
+          "stage": "idle",
+          "release_progress": 0.0,
+          "online_adv_mean": 3.6902835369110107,
+          "adv_mean": 3.6902835369110107,
+          "imagination_trust": 0.7362531582514444,
+          "trigger_effectiveness": 0.22749999999999998,
+          "handoff_necessity": 0.25106082724200357,
+          "model_freshness": 0.8357437811924352
+        },
+        {
+          "step": 100,
+          "stage": "idle",
+          "release_progress": 0.0,
+          "online_adv_mean": 1.4703059196472168,
+          "adv_mean": 1.4703059196472168,
+          "imagination_trust": 0.5988963385423025,
+          "trigger_effectiveness": 0.22749999999999998,
+          "handoff_necessity": 0.1262833542293973,
+          "model_freshness": 0.84892727037602
+        },
+        {
+          "step": 150,
+          "stage": "idle",
+          "release_progress": 0.0,
+          "online_adv_mean": -0.14879055321216583,
+          "adv_mean": -0.14879055321216583,
+          "imagination_trust": 0.5997476081674298,
+          "trigger_effectiveness": 0.22326876864302903,
+          "handoff_necessity": 0.08509535623921288,
+          "model_freshness": 0.8588660319325928
+        },
+        {
+          "step": 2400,
+          "stage": "trigger",
+          "release_progress": 1.0,
+          "online_adv_mean": -7.108315944671631,
+          "adv_mean": 0.08596928417682648,
+          "imagination_trust": 0.1932627558708191,
+          "trigger_effectiveness": 0.7112246647477151,
+          "handoff_necessity": 0.8996351381142935,
+          "model_freshness": 0.44115201460818443
+        },
+        {
+          "step": 2450,
+          "stage": "trigger",
+          "release_progress": 1.0,
+          "online_adv_mean": -4.118166446685791,
+          "adv_mean": 0.10755769163370132,
+          "imagination_trust": 0.3896523579955101,
+          "trigger_effectiveness": 0.8326994881033898,
+          "handoff_necessity": 0.6899269551038743,
+          "model_freshness": 0.6100722096189856
+        },
+        {
+          "step": 2500,
+          "stage": "trigger",
+          "release_progress": 1.0,
+          "online_adv_mean": -4.959566116333008,
+          "adv_mean": 0.06616546213626862,
+          "imagination_trust": 0.3325525159637134,
+          "trigger_effectiveness": 0.7985176265239716,
+          "handoff_necessity": 0.7521622177627352,
+          "model_freshness": 0.558227446998987
+        }
+      ]
+    },
+    {
+      "run_dir": "/Users/zhangsan/Desktop/缸中之脑v5.6/outputs/exp_seed42_v125_release_tail_sustain_handoffblock100_2500_20260314_01",
+      "num_metric_rows": 50,
+      "num_trace_rows": 50,
+      "eval_summary": {
+        "available": true,
+        "peak_step": 750,
+        "peak_mean": 355.8,
+        "final_step": 2500,
+        "final_mean": 162.2,
+        "drop_from_peak": -193.60000000000002,
+        "records": [
+          {
+            "step": 250,
+            "mean": 15.9
+          },
+          {
+            "step": 500,
+            "mean": 107.6
+          },
+          {
+            "step": 750,
+            "mean": 355.8
+          },
+          {
+            "step": 1000,
+            "mean": 183.5
+          },
+          {
+            "step": 1250,
+            "mean": 177.4
+          },
+          {
+            "step": 1500,
+            "mean": 167.1
+          },
+          {
+            "step": 1750,
+            "mean": 175.5
+          },
+          {
+            "step": 2000,
+            "mean": 147.8
+          },
+          {
+            "step": 2250,
+            "mean": 145.7
+          },
+          {
+            "step": 2500,
+            "mean": 162.2
+          }
+        ]
+      },
+      "signal_stats": {
+        "imagination_trust": {
+          "mean": 0.4786510890834033,
+          "min": 0.14683672189712524,
+          "min_step": 2000,
+          "max": 0.7933634584148725,
+          "max_step": 600,
+          "last": 0.23612314462661743,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 0.14683672189712524
+        },
+        "trigger_effectiveness": {
+          "mean": 0.4435099195276387,
+          "min": 0.06564787849783897,
+          "min_step": 2000,
+          "max": 0.8235658213496209,
+          "max_step": 2400,
+          "last": 0.740600997209549,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 0.06564787849783897
+        },
+        "handoff_necessity": {
+          "mean": 0.4778963638653395,
+          "min": 0.08509535623921288,
+          "min_step": 150,
+          "max": 1.0,
+          "max_step": 2000,
+          "last": 0.8582977281676398,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 1.0
+        },
+        "model_freshness": {
+          "mean": 0.656431145805523,
+          "min": 0.32674005344841217,
+          "min_step": 2000,
+          "max": 0.8957958539765741,
+          "max_step": 900,
+          "last": 0.4776564867628945,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 0.32674005344841217
+        }
+      },
+      "post_peak_signal_stats": {
+        "imagination_trust": {
+          "mean": 0.41778349496976097,
+          "min": 0.14683672189712524,
+          "min_step": 2000,
+          "max": 0.7903926427165666,
+          "max_step": 900,
+          "last": 0.23612314462661743,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 0.14683672189712524
+        },
+        "trigger_effectiveness": {
+          "mean": 0.5276313113260808,
+          "min": 0.06564787849783897,
+          "min_step": 2000,
+          "max": 0.8235658213496209,
+          "max_step": 2400,
+          "last": 0.740600997209549,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 0.06564787849783897
+        },
+        "handoff_necessity": {
+          "mean": 0.600373045673806,
+          "min": 0.1275191836886936,
+          "min_step": 950,
+          "max": 1.0,
+          "max_step": 2000,
+          "last": 0.8582977281676398,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 1.0
+        },
+        "model_freshness": {
+          "mean": 0.5836568283587464,
+          "min": 0.32674005344841217,
+          "min_step": 2000,
+          "max": 0.8957958539765741,
+          "max_step": 900,
+          "last": 0.4776564867628945,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 0.32674005344841217
+        }
+      },
+      "stage_signal_stats": {
+        "idle": {
+          "rows": 15,
+          "step_min": 50,
+          "step_max": 750,
+          "imagination_trust_mean": 0.6382033106229372,
+          "trigger_effectiveness_mean": 0.22575907808200765,
+          "handoff_necessity_mean": 0.1661397853162554,
+          "model_freshness_mean": 0.8410038597660243,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": 1.751460102200508
+        },
+        "persistence": {
+          "rows": 2,
+          "step_min": 2000,
+          "step_max": 2200,
+          "imagination_trust_mean": 0.173555451631546,
+          "trigger_effectiveness_mean": 0.07518569063395261,
+          "handoff_necessity_mean": 1.0,
+          "model_freshness_mean": 0.3551688812449575,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": -7.4991295337677
+        },
+        "persistence_release": {
+          "rows": 4,
+          "step_min": 1300,
+          "step_max": 1450,
+          "imagination_trust_mean": 0.29841669102509816,
+          "trigger_effectiveness_mean": 0.15163119016215207,
+          "handoff_necessity_mean": 0.85,
+          "model_freshness_mean": 0.5145452237621777,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": -5.993236660957336
+        },
+        "post_entry": {
+          "rows": 4,
+          "step_min": 800,
+          "step_max": 1050,
+          "imagination_trust_mean": 0.7510337292527158,
+          "trigger_effectiveness_mean": 0.6015700045041741,
+          "handoff_necessity_mean": 0.1611046522855759,
+          "model_freshness_mean": 0.8494637714101312,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": -0.4648054428398609
+        },
+        "post_entry_soft": {
+          "rows": 5,
+          "step_min": 950,
+          "step_max": 1200,
+          "imagination_trust_mean": 0.5339412569999695,
+          "trigger_effectiveness_mean": 0.37100873574614524,
+          "handoff_necessity_mean": 0.32520350939697695,
+          "model_freshness_mean": 0.6126146074330641,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": -3.43373863697052
+        },
+        "trigger": {
+          "rows": 20,
+          "step_min": 1250,
+          "step_max": 2500,
+          "imagination_trust_mean": 0.35724429627259574,
+          "trigger_effectiveness_mean": 0.6885444983243942,
+          "handoff_necessity_mean": 0.6866142628697978,
+          "model_freshness_mean": 0.5488526306720657,
+          "release_progress_mean": 0.885,
+          "online_adv_mean": -5.001734054088592
+        }
+      },
+      "checkpoint_signals": [
+        {
+          "step": 250,
+          "eval_mean": 15.9,
+          "stage": "idle",
+          "imagination_trust": 0.5613543078303337,
+          "trigger_effectiveness": 0.22749999999999998,
+          "handoff_necessity": 0.10834473487403663,
+          "model_freshness": 0.8462848827499482
+        },
+        {
+          "step": 500,
+          "eval_mean": 107.6,
+          "stage": "idle",
+          "imagination_trust": 0.5790206794937452,
+          "trigger_effectiveness": 0.22749999999999998,
+          "handoff_necessity": 0.17837930288579723,
+          "model_freshness": 0.8237309971559379
+        },
+        {
+          "step": 750,
+          "eval_mean": 355.8,
+          "stage": "idle",
+          "imagination_trust": 0.6807010240852833,
+          "trigger_effectiveness": 0.20561740258708594,
+          "handoff_necessity": 0.2107082307338715,
+          "model_freshness": 0.8051464271290849
+        },
+        {
+          "step": 1000,
+          "eval_mean": 183.5,
+          "stage": "post_entry_soft",
+          "imagination_trust": 0.7293165832757948,
+          "trigger_effectiveness": 0.5418829172849655,
+          "handoff_necessity": 0.1683346990082,
+          "model_freshness": 0.8105619703200128
+        },
+        {
+          "step": 1250,
+          "eval_mean": 177.4,
+          "stage": "trigger",
+          "imagination_trust": 0.33629401127497355,
+          "trigger_effectiveness": 0.15186646139621734,
+          "handoff_necessity": 0.5433990155718592,
+          "model_freshness": 0.39888536273274156
+        },
+        {
+          "step": 1500,
+          "eval_mean": 167.1,
+          "stage": "trigger",
+          "imagination_trust": 0.6244948476552963,
+          "trigger_effectiveness": 0.7736258730888368,
+          "handoff_necessity": 0.2630762867172559,
+          "model_freshness": 0.7423473109155893
+        },
+        {
+          "step": 1750,
+          "eval_mean": 175.5,
+          "stage": "trigger",
+          "imagination_trust": 0.28051125605901084,
+          "trigger_effectiveness": 0.7384531810879708,
+          "handoff_necessity": 0.7869775480694241,
+          "model_freshness": 0.4855986671530538
+        },
+        {
+          "step": 2000,
+          "eval_mean": 147.8,
+          "stage": "persistence",
+          "imagination_trust": 0.14683672189712524,
+          "trigger_effectiveness": 0.06564787849783897,
+          "handoff_necessity": 1.0,
+          "model_freshness": 0.32674005344841217
+        },
+        {
+          "step": 2250,
+          "eval_mean": 145.7,
+          "stage": "trigger",
+          "imagination_trust": 0.28247919430335366,
+          "trigger_effectiveness": 0.7887436151504518,
+          "handoff_necessity": 0.8189368608925078,
+          "model_freshness": 0.5302520211330719
+        },
+        {
+          "step": 2500,
+          "eval_mean": 162.2,
+          "stage": "trigger",
+          "imagination_trust": 0.23612314462661743,
+          "trigger_effectiveness": 0.740600997209549,
+          "handoff_necessity": 0.8582977281676398,
+          "model_freshness": 0.4776564867628945
+        }
+      ],
+      "likely_causes": [
+        "post_peak_imagination_trust_low",
+        "trigger_release_window_carries_high_handoff_pressure",
+        "persistence_release_inherits_low_trust",
+        "persistence_phase_low_model_freshness"
+      ],
+      "trace_excerpt": [
+        {
+          "step": 50,
+          "stage": "idle",
+          "release_progress": 0.0,
+          "online_adv_mean": 3.6902835369110107,
+          "adv_mean": 3.6902835369110107,
+          "imagination_trust": 0.7362531582514444,
+          "trigger_effectiveness": 0.22749999999999998,
+          "handoff_necessity": 0.25106082724200357,
+          "model_freshness": 0.8357437811924352
+        },
+        {
+          "step": 100,
+          "stage": "idle",
+          "release_progress": 0.0,
+          "online_adv_mean": 1.4703059196472168,
+          "adv_mean": 1.4703059196472168,
+          "imagination_trust": 0.5988963385423025,
+          "trigger_effectiveness": 0.22749999999999998,
+          "handoff_necessity": 0.1262833542293973,
+          "model_freshness": 0.84892727037602
+        },
+        {
+          "step": 150,
+          "stage": "idle",
+          "release_progress": 0.0,
+          "online_adv_mean": -0.14879055321216583,
+          "adv_mean": -0.14879055321216583,
+          "imagination_trust": 0.5997476081674298,
+          "trigger_effectiveness": 0.22326876864302903,
+          "handoff_necessity": 0.08509535623921288,
+          "model_freshness": 0.8588660319325928
+        },
+        {
+          "step": 2400,
+          "stage": "trigger",
+          "release_progress": 1.0,
+          "online_adv_mean": -4.3429951667785645,
+          "adv_mean": 0.14343534409999847,
+          "imagination_trust": 0.3247214794158935,
+          "trigger_effectiveness": 0.8235658213496209,
+          "handoff_necessity": 0.7812113212214578,
+          "model_freshness": 0.580629797357652
+        },
+        {
+          "step": 2450,
+          "stage": "trigger",
+          "release_progress": 1.0,
+          "online_adv_mean": -3.10465145111084,
+          "adv_mean": -3.10465145111084,
+          "imagination_trust": 0.48116417080163953,
+          "trigger_effectiveness": 0.5477470695972443,
+          "handoff_necessity": 0.5766696217987273,
+          "model_freshness": 0.629594644366867
+        },
+        {
+          "step": 2500,
+          "stage": "trigger",
+          "release_progress": 1.0,
+          "online_adv_mean": -6.38520622253418,
+          "adv_mean": 0.10453373938798904,
+          "imagination_trust": 0.23612314462661743,
+          "trigger_effectiveness": 0.740600997209549,
+          "handoff_necessity": 0.8582977281676398,
+          "model_freshness": 0.4776564867628945
+        }
+      ]
+    },
+    {
+      "run_dir": "/Users/zhangsan/Desktop/缸中之脑v5.6/outputs/exp_seed42_v126_release_tail_sustain_handoffblock100_confirm2_2500_20260314_01",
+      "num_metric_rows": 50,
+      "num_trace_rows": 50,
+      "eval_summary": {
+        "available": true,
+        "peak_step": 750,
+        "peak_mean": 355.8,
+        "final_step": 2500,
+        "final_mean": 162.2,
+        "drop_from_peak": -193.60000000000002,
+        "records": [
+          {
+            "step": 250,
+            "mean": 15.9
+          },
+          {
+            "step": 500,
+            "mean": 107.6
+          },
+          {
+            "step": 750,
+            "mean": 355.8
+          },
+          {
+            "step": 1000,
+            "mean": 183.5
+          },
+          {
+            "step": 1250,
+            "mean": 177.4
+          },
+          {
+            "step": 1500,
+            "mean": 167.1
+          },
+          {
+            "step": 1750,
+            "mean": 175.5
+          },
+          {
+            "step": 2000,
+            "mean": 147.8
+          },
+          {
+            "step": 2250,
+            "mean": 145.7
+          },
+          {
+            "step": 2500,
+            "mean": 162.2
+          }
+        ]
+      },
+      "signal_stats": {
+        "imagination_trust": {
+          "mean": 0.4786510890834033,
+          "min": 0.14683672189712524,
+          "min_step": 2000,
+          "max": 0.7933634584148725,
+          "max_step": 600,
+          "last": 0.23612314462661743,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 0.14683672189712524
+        },
+        "trigger_effectiveness": {
+          "mean": 0.4435099195276387,
+          "min": 0.06564787849783897,
+          "min_step": 2000,
+          "max": 0.8235658213496209,
+          "max_step": 2400,
+          "last": 0.740600997209549,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 0.06564787849783897
+        },
+        "handoff_necessity": {
+          "mean": 0.4778963638653395,
+          "min": 0.08509535623921288,
+          "min_step": 150,
+          "max": 1.0,
+          "max_step": 2000,
+          "last": 0.8582977281676398,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 1.0
+        },
+        "model_freshness": {
+          "mean": 0.656431145805523,
+          "min": 0.32674005344841217,
+          "min_step": 2000,
+          "max": 0.8957958539765741,
+          "max_step": 900,
+          "last": 0.4776564867628945,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 0.32674005344841217
+        }
+      },
+      "post_peak_signal_stats": {
+        "imagination_trust": {
+          "mean": 0.41778349496976097,
+          "min": 0.14683672189712524,
+          "min_step": 2000,
+          "max": 0.7903926427165666,
+          "max_step": 900,
+          "last": 0.23612314462661743,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 0.14683672189712524
+        },
+        "trigger_effectiveness": {
+          "mean": 0.5276313113260808,
+          "min": 0.06564787849783897,
+          "min_step": 2000,
+          "max": 0.8235658213496209,
+          "max_step": 2400,
+          "last": 0.740600997209549,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 0.06564787849783897
+        },
+        "handoff_necessity": {
+          "mean": 0.600373045673806,
+          "min": 0.1275191836886936,
+          "min_step": 950,
+          "max": 1.0,
+          "max_step": 2000,
+          "last": 0.8582977281676398,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 1.0
+        },
+        "model_freshness": {
+          "mean": 0.5836568283587464,
+          "min": 0.32674005344841217,
+          "min_step": 2000,
+          "max": 0.8957958539765741,
+          "max_step": 900,
+          "last": 0.4776564867628945,
+          "focus_step": 2000,
+          "focus_stage": "persistence",
+          "focus_value": 0.32674005344841217
+        }
+      },
+      "stage_signal_stats": {
+        "idle": {
+          "rows": 15,
+          "step_min": 50,
+          "step_max": 750,
+          "imagination_trust_mean": 0.6382033106229372,
+          "trigger_effectiveness_mean": 0.22575907808200765,
+          "handoff_necessity_mean": 0.1661397853162554,
+          "model_freshness_mean": 0.8410038597660243,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": 1.751460102200508
+        },
+        "persistence": {
+          "rows": 2,
+          "step_min": 2000,
+          "step_max": 2200,
+          "imagination_trust_mean": 0.173555451631546,
+          "trigger_effectiveness_mean": 0.07518569063395261,
+          "handoff_necessity_mean": 1.0,
+          "model_freshness_mean": 0.3551688812449575,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": -7.4991295337677
+        },
+        "persistence_release": {
+          "rows": 4,
+          "step_min": 1300,
+          "step_max": 1450,
+          "imagination_trust_mean": 0.29841669102509816,
+          "trigger_effectiveness_mean": 0.15163119016215207,
+          "handoff_necessity_mean": 0.85,
+          "model_freshness_mean": 0.5145452237621777,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": -5.993236660957336
+        },
+        "post_entry": {
+          "rows": 4,
+          "step_min": 800,
+          "step_max": 1050,
+          "imagination_trust_mean": 0.7510337292527158,
+          "trigger_effectiveness_mean": 0.6015700045041741,
+          "handoff_necessity_mean": 0.1611046522855759,
+          "model_freshness_mean": 0.8494637714101312,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": -0.4648054428398609
+        },
+        "post_entry_soft": {
+          "rows": 5,
+          "step_min": 950,
+          "step_max": 1200,
+          "imagination_trust_mean": 0.5339412569999695,
+          "trigger_effectiveness_mean": 0.37100873574614524,
+          "handoff_necessity_mean": 0.32520350939697695,
+          "model_freshness_mean": 0.6126146074330641,
+          "release_progress_mean": 0.0,
+          "online_adv_mean": -3.43373863697052
+        },
+        "trigger": {
+          "rows": 20,
+          "step_min": 1250,
+          "step_max": 2500,
+          "imagination_trust_mean": 0.35724429627259574,
+          "trigger_effectiveness_mean": 0.6885444983243942,
+          "handoff_necessity_mean": 0.6866142628697978,
+          "model_freshness_mean": 0.5488526306720657,
+          "release_progress_mean": 0.885,
+          "online_adv_mean": -5.001734054088592
+        }
+      },
+      "checkpoint_signals": [
+        {
+          "step": 250,
+          "eval_mean": 15.9,
+          "stage": "idle",
+          "imagination_trust": 0.5613543078303337,
+          "trigger_effectiveness": 0.22749999999999998,
+          "handoff_necessity": 0.10834473487403663,
+          "model_freshness": 0.8462848827499482
+        },
+        {
+          "step": 500,
+          "eval_mean": 107.6,
+          "stage": "idle",
+          "imagination_trust": 0.5790206794937452,
+          "trigger_effectiveness": 0.22749999999999998,
+          "handoff_necessity": 0.17837930288579723,
+          "model_freshness": 0.8237309971559379
+        },
+        {
+          "step": 750,
+          "eval_mean": 355.8,
+          "stage": "idle",
+          "imagination_trust": 0.6807010240852833,
+          "trigger_effectiveness": 0.20561740258708594,
+          "handoff_necessity": 0.2107082307338715,
+          "model_freshness": 0.8051464271290849
+        },
+        {
+          "step": 1000,
+          "eval_mean": 183.5,
+          "stage": "post_entry_soft",
+          "imagination_trust": 0.7293165832757948,
+          "trigger_effectiveness": 0.5418829172849655,
+          "handoff_necessity": 0.1683346990082,
+          "model_freshness": 0.8105619703200128
+        },
+        {
+          "step": 1250,
+          "eval_mean": 177.4,
+          "stage": "trigger",
+          "imagination_trust": 0.33629401127497355,
+          "trigger_effectiveness": 0.15186646139621734,
+          "handoff_necessity": 0.5433990155718592,
+          "model_freshness": 0.39888536273274156
+        },
+        {
+          "step": 1500,
+          "eval_mean": 167.1,
+          "stage": "trigger",
+          "imagination_trust": 0.6244948476552963,
+          "trigger_effectiveness": 0.7736258730888368,
+          "handoff_necessity": 0.2630762867172559,
+          "model_freshness": 0.7423473109155893
+        },
+        {
+          "step": 1750,
+          "eval_mean": 175.5,
+          "stage": "trigger",
+          "imagination_trust": 0.28051125605901084,
+          "trigger_effectiveness": 0.7384531810879708,
+          "handoff_necessity": 0.7869775480694241,
+          "model_freshness": 0.4855986671530538
+        },
+        {
+          "step": 2000,
+          "eval_mean": 147.8,
+          "stage": "persistence",
+          "imagination_trust": 0.14683672189712524,
+          "trigger_effectiveness": 0.06564787849783897,
+          "handoff_necessity": 1.0,
+          "model_freshness": 0.32674005344841217
+        },
+        {
+          "step": 2250,
+          "eval_mean": 145.7,
+          "stage": "trigger",
+          "imagination_trust": 0.28247919430335366,
+          "trigger_effectiveness": 0.7887436151504518,
+          "handoff_necessity": 0.8189368608925078,
+          "model_freshness": 0.5302520211330719
+        },
+        {
+          "step": 2500,
+          "eval_mean": 162.2,
+          "stage": "trigger",
+          "imagination_trust": 0.23612314462661743,
+          "trigger_effectiveness": 0.740600997209549,
+          "handoff_necessity": 0.8582977281676398,
+          "model_freshness": 0.4776564867628945
+        }
+      ],
+      "likely_causes": [
+        "post_peak_imagination_trust_low",
+        "trigger_release_window_carries_high_handoff_pressure",
+        "persistence_release_inherits_low_trust",
+        "persistence_phase_low_model_freshness"
+      ],
+      "trace_excerpt": [
+        {
+          "step": 50,
+          "stage": "idle",
+          "release_progress": 0.0,
+          "online_adv_mean": 3.6902835369110107,
+          "adv_mean": 3.6902835369110107,
+          "imagination_trust": 0.7362531582514444,
+          "trigger_effectiveness": 0.22749999999999998,
+          "handoff_necessity": 0.25106082724200357,
+          "model_freshness": 0.8357437811924352
+        },
+        {
+          "step": 100,
+          "stage": "idle",
+          "release_progress": 0.0,
+          "online_adv_mean": 1.4703059196472168,
+          "adv_mean": 1.4703059196472168,
+          "imagination_trust": 0.5988963385423025,
+          "trigger_effectiveness": 0.22749999999999998,
+          "handoff_necessity": 0.1262833542293973,
+          "model_freshness": 0.84892727037602
+        },
+        {
+          "step": 150,
+          "stage": "idle",
+          "release_progress": 0.0,
+          "online_adv_mean": -0.14879055321216583,
+          "adv_mean": -0.14879055321216583,
+          "imagination_trust": 0.5997476081674298,
+          "trigger_effectiveness": 0.22326876864302903,
+          "handoff_necessity": 0.08509535623921288,
+          "model_freshness": 0.8588660319325928
+        },
+        {
+          "step": 2400,
+          "stage": "trigger",
+          "release_progress": 1.0,
+          "online_adv_mean": -4.3429951667785645,
+          "adv_mean": 0.14343534409999847,
+          "imagination_trust": 0.3247214794158935,
+          "trigger_effectiveness": 0.8235658213496209,
+          "handoff_necessity": 0.7812113212214578,
+          "model_freshness": 0.580629797357652
+        },
+        {
+          "step": 2450,
+          "stage": "trigger",
+          "release_progress": 1.0,
+          "online_adv_mean": -3.10465145111084,
+          "adv_mean": -3.10465145111084,
+          "imagination_trust": 0.48116417080163953,
+          "trigger_effectiveness": 0.5477470695972443,
+          "handoff_necessity": 0.5766696217987273,
+          "model_freshness": 0.629594644366867
+        },
+        {
+          "step": 2500,
+          "stage": "trigger",
+          "release_progress": 1.0,
+          "online_adv_mean": -6.38520622253418,
+          "adv_mean": 0.10453373938798904,
+          "imagination_trust": 0.23612314462661743,
+          "trigger_effectiveness": 0.740600997209549,
+          "handoff_necessity": 0.8582977281676398,
+          "model_freshness": 0.4776564867628945
+        }
+      ]
+    }
+  ],
+  "comparison_rows": [
+    {
+      "run_dir": "/Users/zhangsan/Desktop/缸中之脑v5.6/outputs/exp_seed42_v123_release_tail_sustain_only_2500_20260314_01",
+      "run_name": "exp_seed42_v123_release_tail_sustain_only_2500_20260314_01",
+      "peak_eval": 355.8,
+      "final_eval": 191.6,
+      "eval_drop": -164.20000000000002,
+      "post_peak_imagination_trust_mean": 0.4081044655707147,
+      "post_peak_trigger_effectiveness_mean": 0.4949694479924316,
+      "post_peak_handoff_necessity_mean": 0.6193198511137874,
+      "post_peak_model_freshness_mean": 0.5739594345606955,
+      "likely_causes": [
+        "post_peak_imagination_trust_low",
+        "trigger_release_window_carries_high_handoff_pressure",
+        "persistence_release_inherits_low_trust",
+        "persistence_phase_low_model_freshness"
+      ]
+    },
+    {
+      "run_dir": "/Users/zhangsan/Desktop/缸中之脑v5.6/outputs/exp_seed42_v125_release_tail_sustain_handoffblock100_2500_20260314_01",
+      "run_name": "exp_seed42_v125_release_tail_sustain_handoffblock100_2500_20260314_01",
+      "peak_eval": 355.8,
+      "final_eval": 162.2,
+      "eval_drop": -193.60000000000002,
+      "post_peak_imagination_trust_mean": 0.41778349496976097,
+      "post_peak_trigger_effectiveness_mean": 0.5276313113260808,
+      "post_peak_handoff_necessity_mean": 0.600373045673806,
+      "post_peak_model_freshness_mean": 0.5836568283587464,
+      "likely_causes": [
+        "post_peak_imagination_trust_low",
+        "trigger_release_window_carries_high_handoff_pressure",
+        "persistence_release_inherits_low_trust",
+        "persistence_phase_low_model_freshness"
+      ]
+    },
+    {
+      "run_dir": "/Users/zhangsan/Desktop/缸中之脑v5.6/outputs/exp_seed42_v126_release_tail_sustain_handoffblock100_confirm2_2500_20260314_01",
+      "run_name": "exp_seed42_v126_release_tail_sustain_handoffblock100_confirm2_2500_20260314_01",
+      "peak_eval": 355.8,
+      "final_eval": 162.2,
+      "eval_drop": -193.60000000000002,
+      "post_peak_imagination_trust_mean": 0.41778349496976097,
+      "post_peak_trigger_effectiveness_mean": 0.5276313113260808,
+      "post_peak_handoff_necessity_mean": 0.600373045673806,
+      "post_peak_model_freshness_mean": 0.5836568283587464,
+      "likely_causes": [
+        "post_peak_imagination_trust_low",
+        "trigger_release_window_carries_high_handoff_pressure",
+        "persistence_release_inherits_low_trust",
+        "persistence_phase_low_model_freshness"
+      ]
+    }
+  ]
+}
