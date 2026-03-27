@@ -9604,6 +9604,7 @@ class TrainingLoop:
         *,
         fallback_best_step: int = -1,
         fallback_best_eval: float = -float("inf"),
+        strict: bool = False,
     ) -> None:
         _compensation_restore_adaptive_compensation_state(
             self,
@@ -9611,6 +9612,7 @@ class TrainingLoop:
             fallback_best_step=fallback_best_step,
             fallback_best_eval=fallback_best_eval,
             checkpoint_path="trainer_state",
+            strict=strict,
         )
 
     def _resolve_adaptive_eval_confirmation_count(self, specific_key: str) -> int:
@@ -20725,6 +20727,7 @@ class TrainingLoop:
                 fallback_best_eval=float(
                     getattr(ts, "best_eval_return", -float("inf"))
                 ),
+                strict=True,
             )
             logger.info(f"Resumed from step {self.global_step}")
 

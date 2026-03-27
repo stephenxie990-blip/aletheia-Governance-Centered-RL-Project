@@ -14373,7 +14373,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         )
         self.assertFalse(any("no seed data available" in w for w in warnings))
 
-    def test_imagination_only_resume_backfills_legacy_post_solved_anchor_state(self):
+    def test_imagination_only_resume_rejects_legacy_post_solved_anchor_backfill_by_default(self):
         device = torch.device("cpu")
         config = TrainingConfig(
             config_mode="strict",
@@ -14473,66 +14473,11 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             )
             resumed_loop.imagination_engine = _FakeImaginationEngine(device)
             resumed_loop._build_real_batch = lambda: None
-            resumed_loop.run(num_steps=6, data_collector=None, resume_from=ckpt_path)
-
-        self.assertEqual(
-            resumed_loop._adaptive_imag_compensation_post_solved_actor_anchor_step,
-            5,
-        )
-        self.assertAlmostEqual(
-            resumed_loop._adaptive_imag_compensation_post_solved_actor_anchor_eval,
-            234.5,
-            places=6,
-        )
-        self.assertIsNotNone(
-            resumed_loop._adaptive_imag_compensation_post_solved_actor_anchor_actor
-        )
-        self.assertTrue(
-            bool(
-                resumed_loop._adaptive_imag_compensation_post_solved_actor_anchor_params
-            )
-        )
-        self.assertEqual(
-            resumed_loop._adaptive_imag_compensation_post_solved_critic_anchor_step,
-            5,
-        )
-        self.assertAlmostEqual(
-            resumed_loop._adaptive_imag_compensation_post_solved_critic_anchor_eval,
-            234.5,
-            places=6,
-        )
-        self.assertIsNotNone(
-            resumed_loop._adaptive_imag_compensation_post_solved_critic_anchor_critic
-        )
-        self.assertEqual(resumed_loop._behavior_policy_eval_anchor_step, 5)
-        self.assertAlmostEqual(
-            resumed_loop._behavior_policy_eval_anchor_eval,
-            234.5,
-            places=6,
-        )
-        self.assertIsNotNone(resumed_loop._behavior_policy_eval_anchor_actor)
-        self.assertEqual(
-            resumed_loop._adaptive_imag_compensation_post_solved_hold_until_step,
-            13,
-        )
-        self.assertEqual(
-            resumed_loop._adaptive_imag_compensation_post_solved_eval_confirmation_streak,
-            1,
-        )
-        self.assertAlmostEqual(
-            resumed_loop._adaptive_imag_compensation_post_solved_confirmed_best_mean,
-            234.5,
-            places=6,
-        )
-        self.assertEqual(
-            resumed_loop.training_step._adaptive_imag_compensation_post_solved_actor_anchor_step,
-            5,
-        )
-        self.assertAlmostEqual(
-            resumed_loop.training_step._adaptive_imag_compensation_post_solved_actor_anchor_eval,
-            234.5,
-            places=6,
-        )
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "Adaptive compensation restore degraded",
+            ):
+                resumed_loop.run(num_steps=6, data_collector=None, resume_from=ckpt_path)
 
     def test_resume_reports_compensation_anchor_degradation_explicitly(self):
         device = torch.device("cpu")

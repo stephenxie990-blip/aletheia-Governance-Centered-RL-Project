@@ -884,6 +884,7 @@ def restore_adaptive_compensation_state(
     fallback_best_step: int = -1,
     fallback_best_eval: float = -float("inf"),
     checkpoint_path: Optional[str] = None,
+    strict: bool = False,
 ) -> None:
     if not state:
         runtime._adaptive_compensation_restore_report = {
@@ -1175,6 +1176,12 @@ def restore_adaptive_compensation_state(
         fallback_best_step=fallback_best_step,
         fallback_best_eval=fallback_best_eval,
     )
+    if strict and str(report.get("status", "restored")) == "degraded":
+        issue_text = " | ".join(str(item) for item in report.get("issues", [])) or "unknown issues"
+        raise RuntimeError(
+            "Adaptive compensation restore degraded for "
+            f"{checkpoint_path or '<checkpoint>'}: {issue_text}"
+        )
 
 
 def resolve_post_trigger_quality_state(
