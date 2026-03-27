@@ -259,6 +259,22 @@ class _DummyModelRouterCritic(nn.Module):
         return dist, value
 
 
+class _FallbackGradTrackingCritic(nn.Module):
+    def __init__(self, feat_dim: int):
+        super().__init__()
+        self.v = nn.Linear(feat_dim, 1, bias=False)
+        nn.init.ones_(self.v.weight)
+        self.last_grad_enabled = None
+        self.last_input_requires_grad = None
+
+    def forward(self, x):
+        self.last_grad_enabled = bool(torch.is_grad_enabled())
+        self.last_input_requires_grad = bool(x.requires_grad)
+        if x.dim() == 3:
+            x = x.reshape(-1, x.shape[-1])
+        return self.v(x).squeeze(-1)
+
+
 class _SemanticWMState:
     def __init__(self, x_t, h_shared, z):
         self.x_t = x_t
@@ -1288,6 +1304,59 @@ class TestTrainingEntryPoints(unittest.TestCase):
         grad_live = batch_live["policy_features"].grad
         self.assertIsNotNone(grad_live)
         self.assertGreater(float(grad_live.abs().sum().item()), 0.0)
+
+    def test_training_step_policy_value_helper_keeps_live_gradients_when_falling_back_from_target_kwarg(self):
+        device = torch.device("cpu")
+        model = _DummyModel(4, 2, device).to(device)
+        model.critic = _FallbackGradTrackingCritic(4).to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        stepper = TrainingStep(
+            model=model,
+            opt_bundle=_single_rl_opt_bundle(optimizer),
+            config=TrainingConfig(),
+            device=device,
+        )
+
+        policy_features = torch.randn(2, 3, 4, device=device, requires_grad=True)
+
+        values = stepper._compute_policy_feature_values(
+            policy_features,
+            use_target=True,
+        )
+
+        self.assertIsNotNone(values)
+        self.assertTrue(bool(model.critic.last_grad_enabled))
+        self.assertTrue(bool(model.critic.last_input_requires_grad))
+        values.sum().backward()
+        self.assertIsNotNone(policy_features.grad)
+        self.assertGreater(float(policy_features.grad.abs().sum().item()), 0.0)
+
+    def test_training_loop_policy_value_helper_detaches_and_disables_grad_when_falling_back_from_target_kwarg(self):
+        device = torch.device("cpu")
+        model = _DummyModel(4, 2, device).to(device)
+        model.critic = _FallbackGradTrackingCritic(4).to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        loop = TrainingLoop(
+            model=model,
+            opt_bundle=_single_rl_opt_bundle(optimizer),
+            config=TrainingConfig(),
+            buffer=None,
+            device=device,
+        )
+
+        policy_features = torch.randn(2, 3, 4, device=device, requires_grad=True)
+
+        values = loop._compute_policy_feature_values(
+            policy_features,
+            use_target=True,
+        )
+
+        self.assertIsNotNone(values)
+        self.assertFalse(bool(model.critic.last_grad_enabled))
+        self.assertFalse(bool(model.critic.last_input_requires_grad))
+        self.assertFalse(bool(values.requires_grad))
+        self.assertIsNone(values.grad_fn)
+        self.assertIsNone(policy_features.grad)
 
     def test_training_step_uses_critic_compute_loss_contract(self):
         device = torch.device("cpu")

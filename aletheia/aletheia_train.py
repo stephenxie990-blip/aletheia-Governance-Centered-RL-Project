@@ -691,6 +691,61 @@ def extract_real_value(
     return v
 
 
+def _compute_policy_feature_values_via_critic(
+    policy_features: Optional[Tensor],
+    critic: Optional[Any],
+    *,
+    use_target: bool = False,
+    detach_inputs: bool = False,
+    disable_grad: bool = False,
+    allow_signature_fallback: bool = True,
+) -> Optional[Tensor]:
+    """Canonical policy-feature → scalar-value adapter for step and loop paths.
+
+    ``TrainingStep`` and ``TrainingLoop`` need the same critic output shaping
+    logic but intentionally differ on gradient handling.  Keeping the policy
+    feature adaptation here makes that difference explicit via flags instead of
+    duplicated method bodies.
+    """
+    if policy_features is None or critic is None or not callable(critic):
+        return None
+
+    critic_inputs = policy_features.detach() if detach_inputs else policy_features
+
+    def _invoke_critic() -> Optional[Any]:
+        try:
+            return critic(critic_inputs, use_target=use_target)
+        except TypeError:
+            if not allow_signature_fallback:
+                return None
+            try:
+                return critic(critic_inputs)
+            except TypeError:
+                return None
+
+    if disable_grad:
+        with torch.no_grad():
+            values_raw = _invoke_critic()
+    else:
+        values_raw = _invoke_critic()
+
+    if values_raw is None:
+        return None
+
+    values = extract_real_value(values_raw)
+    if values.dim() > len(critic_inputs.shape[:-1]) and values.shape[-1] == 1:
+        values = values.squeeze(-1)
+    expected_shape = critic_inputs.shape[:-1]
+    expected_numel = 1
+    for dim in expected_shape:
+        expected_numel *= int(dim)
+    if values.shape != expected_shape and values.numel() == expected_numel:
+        values = values.reshape(expected_shape)
+    if values.shape != expected_shape:
+        return None
+    return values
+
+
 # ── Danger signal ───────────────────────────────────────────────────────────
 
 def compute_danger_signal(
@@ -3707,32 +3762,15 @@ class TrainingStep:
         *,
         use_target: bool = False,
     ) -> Optional[Tensor]:
-        if policy_features is None or self.model is None:
-            return None
-        critic = getattr(self.model, "critic", None)
-        if critic is None or not callable(critic):
-            return None
-
-        try:
-            values_raw = critic(policy_features, use_target=use_target)
-        except TypeError:
-            try:
-                values_raw = critic(policy_features)
-            except TypeError:
-                return None
-
-        values = extract_real_value(values_raw)
-        if values.dim() > len(policy_features.shape[:-1]) and values.shape[-1] == 1:
-            values = values.squeeze(-1)
-        expected_shape = policy_features.shape[:-1]
-        expected_numel = 1
-        for dim in expected_shape:
-            expected_numel *= int(dim)
-        if values.shape != expected_shape and values.numel() == expected_numel:
-            values = values.reshape(expected_shape)
-        if values.shape != expected_shape:
-            return None
-        return values
+        critic = None if self.model is None else getattr(self.model, "critic", None)
+        return _compute_policy_feature_values_via_critic(
+            policy_features,
+            critic,
+            use_target=use_target,
+            detach_inputs=False,
+            disable_grad=False,
+            allow_signature_fallback=True,
+        )
 
     def _compute_replay_suffix_value_targets(
         self,
@@ -10851,35 +10889,15 @@ class TrainingLoop:
         *,
         use_target: bool = False,
     ) -> Optional[Tensor]:
-        if policy_features is None or self.model is None:
-            return None
-        critic = getattr(self.model, "critic", None)
-        if critic is None or not callable(critic):
-            return None
-        critic_inputs = policy_features.detach()
-        with torch.no_grad():
-            try:
-                values_raw = critic(critic_inputs, use_target=use_target)
-            except TypeError:
-                if use_target:
-                    try:
-                        values_raw = critic(critic_inputs)
-                    except TypeError:
-                        return None
-                else:
-                    return None
-        values = extract_real_value(values_raw)
-        if values.dim() > len(critic_inputs.shape[:-1]) and values.shape[-1] == 1:
-            values = values.squeeze(-1)
-        expected_shape = critic_inputs.shape[:-1]
-        expected_numel = 1
-        for dim in expected_shape:
-            expected_numel *= int(dim)
-        if values.shape != expected_shape and values.numel() == expected_numel:
-            values = values.reshape(expected_shape)
-        if values.shape != expected_shape:
-            return None
-        return values
+        critic = None if self.model is None else getattr(self.model, "critic", None)
+        return _compute_policy_feature_values_via_critic(
+            policy_features,
+            critic,
+            use_target=use_target,
+            detach_inputs=True,
+            disable_grad=True,
+            allow_signature_fallback=bool(use_target),
+        )
 
     def _resolve_imag_continue_cap(
         self,
