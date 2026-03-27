@@ -746,6 +746,68 @@ def _compute_policy_feature_values_via_critic(
     return values
 
 
+def _policy_features_from_wm_state_via_model(
+    model: Optional[Any],
+    wm_state: Optional[Any],
+    *,
+    strict: bool = False,
+    failure_context: str = "policy feature extraction",
+) -> Optional[Tensor]:
+    """Canonical WM-state → policy-feature adapter used by step and loop paths."""
+    failure_reasons: List[str] = []
+
+    if model is None:
+        failure_reasons.append("model is None")
+    if wm_state is None:
+        failure_reasons.append("wm_state is None")
+    if failure_reasons:
+        if strict:
+            raise RuntimeError(f"{failure_context} failed: {'; '.join(failure_reasons)}")
+        return None
+
+    if hasattr(model, "policy_from_wm_state"):
+        try:
+            features = model.policy_from_wm_state(wm_state)
+        except Exception as exc:
+            failure_reasons.append(
+                f"model.policy_from_wm_state raised {type(exc).__name__}: {exc}"
+            )
+        else:
+            if features is not None:
+                return features
+            failure_reasons.append("model.policy_from_wm_state returned None")
+
+    world_model = getattr(model, "world_model", None)
+    rssm = getattr(world_model, "state_transition", None)
+    h_shared = getattr(wm_state, "h_shared", None)
+    z = getattr(wm_state, "z", None)
+    if rssm is None or not hasattr(rssm, "get_features"):
+        failure_reasons.append("world_model.state_transition.get_features unavailable")
+    elif h_shared is None or z is None:
+        missing = []
+        if h_shared is None:
+            missing.append("h_shared")
+        if z is None:
+            missing.append("z")
+        failure_reasons.append(
+            "wm_state missing "
+            + ", ".join(missing)
+            + " required by state_transition.get_features"
+        )
+    else:
+        try:
+            return rssm.get_features(h_shared, z)
+        except Exception as exc:
+            failure_reasons.append(
+                f"state_transition.get_features raised {type(exc).__name__}: {exc}"
+            )
+
+    if strict:
+        detail = "; ".join(failure_reasons) if failure_reasons else "no feature extractor succeeded"
+        raise RuntimeError(f"{failure_context} failed: {detail}")
+    return None
+
+
 # ── Danger signal ───────────────────────────────────────────────────────────
 
 def compute_danger_signal(
@@ -3732,29 +3794,16 @@ class TrainingStep:
     def _policy_features_from_wm_state(
         self,
         wm_state: Optional[Any],
+        *,
+        strict: bool = False,
+        failure_context: str = "policy feature extraction",
     ) -> Optional[Tensor]:
-        if wm_state is None or self.model is None:
-            return None
-
-        if hasattr(self.model, "policy_from_wm_state"):
-            try:
-                features = self.model.policy_from_wm_state(wm_state)
-            except Exception:
-                features = None
-            if features is not None:
-                return features
-
-        world_model = getattr(self.model, "world_model", None)
-        rssm = getattr(world_model, "state_transition", None)
-        h_shared = getattr(wm_state, "h_shared", None)
-        z = getattr(wm_state, "z", None)
-        if rssm is None or h_shared is None or z is None or not hasattr(rssm, "get_features"):
-            return None
-
-        try:
-            return rssm.get_features(h_shared, z)
-        except Exception:
-            return None
+        return _policy_features_from_wm_state_via_model(
+            self.model,
+            wm_state,
+            strict=strict,
+            failure_context=failure_context,
+        )
 
     def _compute_policy_feature_values(
         self,
@@ -3941,14 +3990,24 @@ class TrainingStep:
                     action_t,
                     teacher_state,
                 )
-                teacher_feat = self._policy_features_from_wm_state(teacher_state)
+                teacher_feat = self._policy_features_from_wm_state(
+                    teacher_state,
+                    strict=True,
+                    failure_context=(
+                        f"policy open-loop consistency teacher features at step {idx + 1}"
+                    ),
+                )
             imag_state, _ = world_model.forward_imagination(
                 action_t,
                 imag_state,
             )
-            imag_feat = self._policy_features_from_wm_state(imag_state)
-            if teacher_feat is None or imag_feat is None:
-                continue
+            imag_feat = self._policy_features_from_wm_state(
+                imag_state,
+                strict=True,
+                failure_context=(
+                    f"policy open-loop consistency imagined features at step {idx + 1}"
+                ),
+            )
             if teacher_feat.shape != imag_feat.shape and teacher_feat.numel() == imag_feat.numel():
                 teacher_feat = teacher_feat.reshape_as(imag_feat)
             if teacher_feat.shape != imag_feat.shape:
@@ -4289,14 +4348,24 @@ class TrainingStep:
                 action_t,
                 teacher_state,
             )
-            teacher_feat = self._policy_features_from_wm_state(teacher_state)
+            teacher_feat = self._policy_features_from_wm_state(
+                teacher_state,
+                strict=True,
+                failure_context=(
+                    f"semantic consistency teacher features at step {idx + 1}"
+                ),
+            )
             imag_state, _ = world_model.forward_imagination(
                 action_t,
                 imag_state,
             )
-            imag_feat = self._policy_features_from_wm_state(imag_state)
-            if teacher_feat is None or imag_feat is None:
-                continue
+            imag_feat = self._policy_features_from_wm_state(
+                imag_state,
+                strict=True,
+                failure_context=(
+                    f"semantic consistency imagined features at step {idx + 1}"
+                ),
+            )
 
             teacher_value = self._compute_policy_feature_values(
                 teacher_feat,
@@ -10487,29 +10556,17 @@ class TrainingLoop:
     def _policy_features_from_wm_state(
         self,
         wm_state: Optional[Any],
+        *,
+        strict: bool = False,
+        failure_context: str = "policy feature extraction",
     ) -> Optional[Tensor]:
         """Extract the policy-facing feature vector from a WM state."""
-        if wm_state is None or self.model is None:
-            return None
-
-        if hasattr(self.model, "policy_from_wm_state"):
-            try:
-                features = self.model.policy_from_wm_state(wm_state)
-            except Exception:
-                features = None
-            if features is not None:
-                return features
-
-        world_model = getattr(self.model, "world_model", None)
-        rssm = getattr(world_model, "state_transition", None)
-        h_shared = getattr(wm_state, "h_shared", None)
-        z = getattr(wm_state, "z", None)
-        if rssm is None or h_shared is None or z is None or not hasattr(rssm, "get_features"):
-            return None
-        try:
-            return rssm.get_features(h_shared, z)
-        except Exception:
-            return None
+        return _policy_features_from_wm_state_via_model(
+            self.model,
+            wm_state,
+            strict=strict,
+            failure_context=failure_context,
+        )
 
     def _extract_transition_reward_continue(
         self,

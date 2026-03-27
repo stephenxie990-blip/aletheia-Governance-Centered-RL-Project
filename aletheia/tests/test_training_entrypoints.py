@@ -484,6 +484,16 @@ class _ReplayAnchoredSemanticModel(nn.Module):
         return dist, value
 
 
+class _BrokenPolicyFeatureSemanticModel(_SemanticModel):
+    def __init__(self, vital_dim: int):
+        super().__init__(vital_dim)
+        self.world_model.state_transition = None
+
+    def policy_from_wm_state(self, wm_state):
+        del wm_state
+        raise RuntimeError("broken policy feature projection")
+
+
 class TestTrainingEntryPoints(unittest.TestCase):
     def _make_batch(self, model: nn.Module, device: torch.device):
         torch.manual_seed(0)
@@ -1621,6 +1631,43 @@ class TestTrainingEntryPoints(unittest.TestCase):
         self.assertGreater(float(metrics["wm/semantic_consistency_penalty"]), 0.0)
         self.assertGreater(float(metrics["wm_grad_norm"]), 0.0)
 
+    def test_target_value_consistency_raises_when_policy_feature_extraction_fails(self):
+        device = torch.device("cpu")
+        config = TrainingConfig()
+        config.adaptive_imag_target_value_consistency_weight = 0.5
+        config.adaptive_imag_target_value_consistency_horizon = 2
+        config.adaptive_imag_target_value_consistency_delta = 0.5
+        model = _BrokenPolicyFeatureSemanticModel(4).to(device)
+        stepper = TrainingStep(
+            model=model,
+            opt_bundle=_single_rl_opt_bundle(torch.optim.Adam(model.parameters(), lr=1e-3)),
+            config=config,
+            device=device,
+        )
+
+        wm_batch = {
+            "vitals": torch.zeros((1, 5, 4), device=device),
+            "actions": torch.tensor(
+                [
+                    [
+                        [1.0, 0.0],
+                        [0.0, 1.0],
+                        [1.0, 0.0],
+                        [0.0, 1.0],
+                    ]
+                ],
+                device=device,
+            ),
+            "rewards": torch.tensor([[0.0, 0.0, 2.0, 1.0]], device=device),
+            "dones": torch.zeros((1, 4), device=device),
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "semantic consistency"):
+            stepper._compute_target_value_consistency_loss(
+                wm_batch,
+                stepper._rl_cfg(),
+            )
+
     def test_target_value_consistency_can_boost_high_value_imagined_states(self):
         device = torch.device("cpu")
         base_config = TrainingConfig()
@@ -1837,6 +1884,43 @@ class TestTrainingEntryPoints(unittest.TestCase):
             0.0,
             places=6,
         )
+
+    def test_policy_open_loop_consistency_raises_when_policy_feature_extraction_fails(self):
+        device = torch.device("cpu")
+        config = TrainingConfig()
+        config.adaptive_imag_policy_open_loop_consistency_weight = 0.5
+        config.adaptive_imag_policy_open_loop_consistency_horizon = 2
+        config.adaptive_imag_policy_open_loop_consistency_delta = 0.5
+        model = _BrokenPolicyFeatureSemanticModel(4).to(device)
+        stepper = TrainingStep(
+            model=model,
+            opt_bundle=_single_rl_opt_bundle(torch.optim.Adam(model.parameters(), lr=1e-3)),
+            config=config,
+            device=device,
+        )
+
+        wm_batch = {
+            "vitals": torch.zeros((1, 5, 4), device=device),
+            "actions": torch.tensor(
+                [
+                    [
+                        [1.0, 0.0],
+                        [0.0, 1.0],
+                        [1.0, 0.0],
+                        [0.0, 1.0],
+                    ]
+                ],
+                device=device,
+            ),
+            "rewards": torch.tensor([[0.0, 0.0, 2.0, 1.0]], device=device),
+            "dones": torch.zeros((1, 4), device=device),
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "policy open-loop consistency"):
+            stepper._compute_policy_open_loop_consistency_loss(
+                wm_batch,
+                stepper._rl_cfg(),
+            )
 
     def test_policy_open_loop_consistency_value_scale_penalizes_semantic_drift_even_when_features_match(self):
         device = torch.device("cpu")
