@@ -584,6 +584,13 @@ class _RaisingSCModule(nn.Module):
         raise RuntimeError("sc boom")
 
 
+class _ConstantMSCHead(nn.Module):
+    def compute_loss(self, features, remaining_steps, true_danger=None):
+        del remaining_steps, true_danger
+        loss = features.new_tensor(1.25)
+        return loss, {"total": loss.detach()}
+
+
 class TestConsistencyAuditorStrictFailures(unittest.TestCase):
     def _make_trajectory(self, batch_size: int = 2, seq_len: int = 4) -> WMTrajectory:
         return TestConsistencyAuditorRemainingSteps()._make_trajectory(
@@ -666,6 +673,30 @@ class TestConsistencyAuditorStrictFailures(unittest.TestCase):
 
         self.assertAlmostEqual(float(report.nst_loss.item()), 0.0, places=6)
         self.assertTrue(bool(report.metrics["nst_failed"]))
+
+    def test_danger_signal_failure_raises_in_strict_mode_by_default(self):
+        auditor = ConsistencyAuditor(
+            config=ConsistencyAuditorConfig(msc=MSCConfig(enabled=True)),
+            msc_head=_ConstantMSCHead(),
+        )
+        auditor.set_danger_fn(lambda vitals: (_ for _ in ()).throw(RuntimeError("danger boom")))
+
+        with self.assertRaisesRegex(RuntimeError, "Danger signal computation failed"):
+            auditor.audit(self._make_trajectory(), world_model_ref=None)
+
+    def test_danger_signal_failure_can_fall_back_in_non_strict_mode(self):
+        auditor = ConsistencyAuditor(
+            config=ConsistencyAuditorConfig(
+                strict_auxiliary_losses=False,
+                msc=MSCConfig(enabled=True),
+            ),
+            msc_head=_ConstantMSCHead(),
+        )
+        auditor.set_danger_fn(lambda vitals: (_ for _ in ()).throw(RuntimeError("danger boom")))
+
+        report = auditor.audit(self._make_trajectory(), world_model_ref=None)
+
+        self.assertGreater(float(report.msc_loss.item()), 0.0)
 
 
 class _FakeShortcutTransitionOut:

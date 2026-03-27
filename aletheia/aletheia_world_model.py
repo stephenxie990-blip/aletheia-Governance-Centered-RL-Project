@@ -5675,12 +5675,20 @@ class ConsistencyAuditor(nn.Module):
 
     def _compute_danger(self, trajectory: WMTrajectory) -> Optional[Tensor]:
         fn = self.__dict__.get('_danger_fn')
-        if fn is None or trajectory.vitals is None:
+        if fn is None:
+            return None
+        if trajectory.vitals is None:
+            if self.strict_auxiliary_losses:
+                raise RuntimeError("Danger signal computation failed: trajectory.vitals is unavailable")
+            logger.warning("Danger signal unavailable: trajectory.vitals is None")
             return None
         try:
             danger = fn(trajectory.vitals[:, 1:])
             return danger.unsqueeze(-1) if danger.dim() == 2 else danger
-        except Exception:
+        except Exception as exc:
+            if self.strict_auxiliary_losses:
+                raise RuntimeError(f"Danger signal computation failed: {exc}") from exc
+            logger.warning("Danger signal computation failed; continuing without danger target: %s", exc)
             return None
 
     def get_info(self) -> Dict[str, Any]:
