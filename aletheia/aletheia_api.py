@@ -2522,8 +2522,16 @@ def _compute_dist_kl(anchor_dist: Any, current_dist: Any) -> Optional[torch.Tens
     return None
 
 
-def _forward_policy_dist(actor: Any, feat_t: torch.Tensor) -> Optional[Any]:
+def _forward_policy_dist(
+    actor: Any,
+    feat_t: torch.Tensor,
+    *,
+    strict: bool = False,
+    failure_context: str = "policy distribution forward",
+) -> Optional[Any]:
     if actor is None or not callable(actor):
+        if strict:
+            raise RuntimeError(f"{failure_context} failed: actor is unavailable")
         return None
     was_training: Optional[bool] = None
     if isinstance(actor, nn.Module):
@@ -2532,7 +2540,9 @@ def _forward_policy_dist(actor: Any, feat_t: torch.Tensor) -> Optional[Any]:
     try:
         with torch.no_grad():
             return actor(feat_t)
-    except Exception:
+    except Exception as exc:
+        if strict:
+            raise RuntimeError(f"{failure_context} failed: {exc}") from exc
         return None
     finally:
         if was_training is not None:
@@ -2579,62 +2589,70 @@ def _run_episode_agent_with_telemetry(
 
         feat_np = info.get("f_policy") if isinstance(info, dict) else None
         if feat_np is not None:
-            try:
-                feat_t = torch.as_tensor(feat_np, device=device, dtype=torch.float32)
-                if feat_t.dim() == 1:
-                    feat_t = feat_t.unsqueeze(0)
-                current_dist = _forward_policy_dist(current_actor, feat_t)
-                if current_dist is not None:
-                    entropy_fn = getattr(current_dist, "entropy", None)
-                    entropy_val = _reduce_dist_stat(entropy_fn() if callable(entropy_fn) else None)
-                    if entropy_val is not None:
-                        entropy_values.append(entropy_val)
-                    anchor_kl_val: Optional[float] = None
-                    if anchor_actor is not None:
-                        anchor_dist = _forward_policy_dist(anchor_actor, feat_t)
-                        if anchor_dist is not None:
-                            anchor_kl_val = _reduce_dist_stat(
-                                _compute_dist_kl(anchor_dist, current_dist)
-                            )
-                            if anchor_kl_val is not None:
-                                policy_kl_values.append(anchor_kl_val)
-                    registry_kl_val: Optional[float] = None
-                    valid_registry_actors = [
-                        actor
-                        for actor in list(registry_actors or [])
-                        if actor is not None and callable(actor)
-                    ]
-                    for registry_actor in valid_registry_actors:
-                        anchor_dist = _forward_policy_dist(registry_actor, feat_t)
-                        if anchor_dist is None:
-                            continue
-                        kl_val = _reduce_dist_stat(
-                            _compute_dist_kl(anchor_dist, current_dist)
-                        )
-                        if kl_val is None:
-                            continue
-                        registry_kl_val = (
-                            kl_val
-                            if registry_kl_val is None
-                            else min(registry_kl_val, kl_val)
-                        )
-                    if registry_kl_val is not None:
-                        policy_registry_kl_values.append(registry_kl_val)
-                        corridor_flags.append(
-                            float(
-                                registry_kl_val
-                                <= _REAL_STABILITY_CORRIDOR_KL_THRESHOLD
-                            )
-                        )
-                    elif anchor_kl_val is not None:
-                        corridor_flags.append(
-                            float(
-                                anchor_kl_val
-                                <= _REAL_STABILITY_CORRIDOR_KL_THRESHOLD
-                            )
-                        )
-            except Exception:
-                pass
+            feat_t = torch.as_tensor(feat_np, device=device, dtype=torch.float32)
+            if feat_t.dim() == 1:
+                feat_t = feat_t.unsqueeze(0)
+            current_dist = _forward_policy_dist(
+                current_actor,
+                feat_t,
+                strict=True,
+                failure_context="real-stability telemetry current policy forward",
+            )
+            entropy_fn = getattr(current_dist, "entropy", None)
+            entropy_val = _reduce_dist_stat(entropy_fn() if callable(entropy_fn) else None)
+            if entropy_val is not None:
+                entropy_values.append(entropy_val)
+            anchor_kl_val: Optional[float] = None
+            if anchor_actor is not None:
+                anchor_dist = _forward_policy_dist(
+                    anchor_actor,
+                    feat_t,
+                    strict=True,
+                    failure_context="real-stability telemetry anchor policy forward",
+                )
+                anchor_kl_val = _reduce_dist_stat(
+                    _compute_dist_kl(anchor_dist, current_dist)
+                )
+                if anchor_kl_val is not None:
+                    policy_kl_values.append(anchor_kl_val)
+            registry_kl_val: Optional[float] = None
+            valid_registry_actors = [
+                actor
+                for actor in list(registry_actors or [])
+                if actor is not None
+            ]
+            for registry_actor in valid_registry_actors:
+                anchor_dist = _forward_policy_dist(
+                    registry_actor,
+                    feat_t,
+                    strict=True,
+                    failure_context="real-stability telemetry registry policy forward",
+                )
+                kl_val = _reduce_dist_stat(
+                    _compute_dist_kl(anchor_dist, current_dist)
+                )
+                if kl_val is None:
+                    continue
+                registry_kl_val = (
+                    kl_val
+                    if registry_kl_val is None
+                    else min(registry_kl_val, kl_val)
+                )
+            if registry_kl_val is not None:
+                policy_registry_kl_values.append(registry_kl_val)
+                corridor_flags.append(
+                    float(
+                        registry_kl_val
+                        <= _REAL_STABILITY_CORRIDOR_KL_THRESHOLD
+                    )
+                )
+            elif anchor_kl_val is not None:
+                corridor_flags.append(
+                    float(
+                        anchor_kl_val
+                        <= _REAL_STABILITY_CORRIDOR_KL_THRESHOLD
+                    )
+                )
 
         obs, reward, terminated, truncated, _ = env_ref.step(action)
         total_reward += float(reward)

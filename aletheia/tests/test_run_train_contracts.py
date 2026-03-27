@@ -437,6 +437,12 @@ class _ModeAwareActor(nn.Module):
         return _ModeDist(self.linear(feat))
 
 
+class _FailingModeAwareActor(nn.Module):
+    def forward(self, feat):
+        del feat
+        raise RuntimeError("telemetry actor boom")
+
+
 class _ModeAwareCritic(nn.Module):
     def __init__(self):
         super().__init__()
@@ -608,6 +614,32 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertAlmostEqual(float(telemetry["real_corridor_persistence_rate"]), 1.0, places=6)
         self.assertAlmostEqual(float(telemetry["real_corridor_entry_rate"]), 0.0, places=6)
         self.assertAlmostEqual(float(telemetry["real_corridor_exit_rate"]), 0.0, places=6)
+
+    def test_evaluate_agent_raises_when_anchor_telemetry_forward_fails(self):
+        handle = self._make_mode_handle()
+        handle._real_stability_eval_anchor_actor = _FailingModeAwareActor()
+        env = _AlternatingObsEnv(
+            observations=[
+                np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                np.array([-1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            ]
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "anchor policy forward"):
+            api._evaluate_agent(env, handle, episodes=1, max_steps=4)
+
+    def test_evaluate_agent_raises_when_registry_telemetry_forward_fails(self):
+        handle = self._make_mode_handle()
+        handle._real_stability_eval_anchor_registry_actors = [_FailingModeAwareActor()]
+        env = _AlternatingObsEnv(
+            observations=[
+                np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                np.array([-1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            ]
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "registry policy forward"):
+            api._evaluate_agent(env, handle, episodes=1, max_steps=4)
 
     def test_training_loop_run_stops_when_eval_requests_early_stop(self):
         events = []
