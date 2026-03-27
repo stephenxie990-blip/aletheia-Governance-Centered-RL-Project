@@ -4014,7 +4014,9 @@ def run_train(
                 trusted_source=True,
             )
         except Exception as exc:
-            logger.warning("Unable to pre-load resume metadata from %s: %s", str(resume_from), exc)
+            raise RuntimeError(
+                f"Unable to pre-load resume metadata from {resume_from}: {exc}"
+            ) from exc
         else:
             if resumed_state.best_eval_return > -float("inf"):
                 best_eval_mean[0] = float(resumed_state.best_eval_return)

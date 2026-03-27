@@ -1193,6 +1193,10 @@ class TestRunTrainContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             resume_path = str(Path(tmpdir) / "resume_in.pt")
             Path(resume_path).write_text("resume", encoding="utf-8")
+            resume_state = train_mod.TrainingStateManager.create(
+                config=TrainingConfig(),
+                device=torch.device("cpu"),
+            )
             args = SimpleNamespace(
                 env="Dummy-v0",
                 device="cpu",
@@ -1239,7 +1243,12 @@ class TestRunTrainContracts(unittest.TestCase):
                  mock.patch.object(api, "_evaluate_agent", side_effect=fake_evaluate_agent), \
                  mock.patch.object(api, "load_agent", return_value=best_agent), \
                  mock.patch.object(train_mod, "TrainingLoop", _FakeTrainingLoop), \
-                 mock.patch.object(train_mod, "create_replay_buffer", side_effect=fake_create_replay_buffer):
+                 mock.patch.object(train_mod, "create_replay_buffer", side_effect=fake_create_replay_buffer), \
+                 mock.patch.object(
+                     train_mod.TrainingStateManager,
+                     "load",
+                     return_value=resume_state,
+                 ):
                 result = api.run_train(
                     args,
                     input_spec={"env": train_env, "eval_env": eval_env},
@@ -1317,6 +1326,76 @@ class TestRunTrainContracts(unittest.TestCase):
             self.assertAlmostEqual(float(eval_records[0]["mean_reward"]), 123.0, places=6)
             self.assertAlmostEqual(float(eval_records[0]["eval_reward"]), 123.0, places=6)
             self.assertAlmostEqual(float(eval_records[0]["current_checkpoint_reward"]), 123.0, places=6)
+
+    def test_run_train_rejects_resume_metadata_preload_failures(self):
+        agent = _DummyAgent()
+        train_env = _CountingEnv(done_after=2)
+        eval_env = _CountingEnv(done_after=2)
+
+        def fake_create_agent(env, config_overrides=None, device=None, seed=None):
+            del env, config_overrides, device, seed
+            return agent
+
+        def fake_create_replay_buffer(capacity, store_obs=False):
+            del store_obs
+            return _DummyBuffer(capacity=capacity)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            resume_path = str(Path(tmpdir) / "resume_in.pt")
+            Path(resume_path).write_text("resume", encoding="utf-8")
+            args = SimpleNamespace(
+                env="Dummy-v0",
+                device="cpu",
+                seed=7,
+                render=False,
+                verbose=False,
+                load=None,
+                save=tmpdir,
+                resume_from=resume_path,
+                steps=64,
+                update_steps=2,
+                collect_steps_per_cycle=32,
+                train_steps_per_cycle=1,
+                wm_seq_len=1,
+                wm_batch_size=1,
+                imagination_horizon=3,
+                imagination_batch_size=1,
+                rl_batch_size=1,
+                buffer_capacity=8,
+                pretrain_ratio=0.0,
+                warmup_ratio=0.0,
+                imagination_only=False,
+                imag_ratio_start=0.0,
+                imag_ratio_end=0.0,
+                imag_ratio_max=0.0,
+                imag_ratio_ramp_steps=1,
+                imag_gradient="dynamics",
+                imag_gradient_mix=0.0,
+                actor_analytic_weight=1.0,
+                actor_reinforce_aux_weight_discrete=0.1,
+                use_reward_ema=True,
+                log_interval=1000,
+                eval_interval=1,
+                save_interval=1,
+                eval_episodes=2,
+                eval_max_steps=5,
+                eval_only=False,
+                enable_eval=True,
+                overrides=None,
+                argv=["scripts/cartpole_train.py", "--resume-from", resume_path],
+            )
+            with mock.patch.object(api, "create_agent", side_effect=fake_create_agent), \
+                 mock.patch.object(train_mod, "create_replay_buffer", side_effect=fake_create_replay_buffer), \
+                 mock.patch.object(
+                     train_mod.TrainingStateManager,
+                     "load",
+                     side_effect=RuntimeError("resume metadata boom"),
+                 ):
+                with self.assertRaisesRegex(RuntimeError, "resume metadata"):
+                    api.run_train(
+                        args,
+                        input_spec={"env": train_env, "eval_env": eval_env},
+                    )
 
     def test_run_train_console_log_disambiguates_update_and_env_steps(self):
         agent = _DummyAgent()
