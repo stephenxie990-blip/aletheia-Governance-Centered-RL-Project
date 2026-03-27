@@ -20769,7 +20769,13 @@ class TrainingLoop:
 
             if imagination_only and imag_batch is None:
                 if self.imagination_engine is None:
-                    logger.warning("Imagination-only enabled but imagination_engine is None")
+                    raise RuntimeError(
+                        "Imagination-only enabled but imagination_engine is None"
+                    )
+                if data_collector is None:
+                    raise RuntimeError(
+                        "Imagination-only enabled but no seed data is available and no data collector is configured"
+                    )
                 else:
                     logger.warning("Imagination-only enabled but no seed data available")
                 self._steps_since_collect = self.train_steps_per_cycle
@@ -20781,6 +20787,10 @@ class TrainingLoop:
                 imag_batch=imag_batch,
             )
             if rl_batch is None:
+                if data_collector is None:
+                    raise RuntimeError(
+                        "No available batch (real/imag) and no data collector is configured"
+                    )
                 logger.warning("No available batch (real/imag), skipping step")
                 self._steps_since_collect = self.train_steps_per_cycle
                 time.sleep(0.1)
@@ -20821,6 +20831,10 @@ class TrainingLoop:
                 )
 
             if skip_rl and wm_batch is None:
+                if data_collector is None:
+                    raise RuntimeError(
+                        "Skip-RL phase requires WM batch but no data collector is configured"
+                    )
                 logger.warning("Skip-RL phase requires WM batch but none is available; collecting more data.")
                 self._steps_since_collect = self.train_steps_per_cycle
                 time.sleep(0.1)
