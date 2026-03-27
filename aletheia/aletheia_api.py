@@ -3025,13 +3025,18 @@ def _parse_overrides(overrides_arg: Optional[str]) -> Dict[str, Any]:
     path = Path(overrides_arg)
     if path.exists():
         raw = path.read_text(encoding="utf-8")
+        source = f"override file '{path}'"
     else:
         raw = overrides_arg
+        source = "override JSON string"
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:
-        logger.error("Failed to parse overrides: %s", exc)
-        return {}
+        raise ValueError(f"Failed to parse {source}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"Overrides from {source} must decode to a JSON object, got {type(data).__name__}"
+        )
     rl = data.setdefault("rl", {})
     rl.setdefault("use_alpha_adaptive", True)
     rl.setdefault("use_entropy_protection", False)

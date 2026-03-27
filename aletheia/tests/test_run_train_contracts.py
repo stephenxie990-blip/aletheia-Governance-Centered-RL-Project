@@ -980,6 +980,20 @@ class TestRunTrainContracts(unittest.TestCase):
                 },
             )
 
+    def test_parse_overrides_rejects_invalid_json_payload(self):
+        with self.assertRaisesRegex(ValueError, "override JSON string"):
+            api._parse_overrides('{"rl": ')
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            overrides_path = Path(tmpdir) / "bad_overrides.json"
+            overrides_path.write_text('{"rl": ', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "override file"):
+                api._parse_overrides(str(overrides_path))
+
+    def test_parse_overrides_rejects_non_mapping_payload(self):
+        with self.assertRaisesRegex(ValueError, "JSON object"):
+            api._parse_overrides('["not", "a", "mapping"]')
+
     def test_run_train_uses_agent_collector_and_writes_resume_artifacts(self):
         agent = _DummyAgent()
         train_env = _CountingEnv(done_after=2)
