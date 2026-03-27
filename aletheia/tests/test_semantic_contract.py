@@ -103,15 +103,25 @@ class TestSemanticContract(unittest.TestCase):
         arbiter = SemanticArbiter()
         internal = self._make_contract(
             source="critic_bootstrap",
-            authority=torch.full((2, 2), 0.8, dtype=torch.float32),
+            coverage=torch.full((2, 2), 0.2, dtype=torch.float32),
+            confidence=torch.full((2, 2), 0.2, dtype=torch.float32),
+            authority=torch.full((2, 2), 0.2, dtype=torch.float32),
             trust=torch.full((2, 2), 0.2, dtype=torch.float32),
+            task_agreement=torch.full((2, 2), 0.1, dtype=torch.float32),
+            registry_support=torch.full((2, 2), 0.1, dtype=torch.float32),
+            semantic_debt=torch.full((2, 2), 0.8, dtype=torch.float32),
+            certified_by=(),
         )
         external = self._make_contract(
             source="replay_suffix",
-            coverage=torch.full((2, 2), 0.25, dtype=torch.float32),
-            confidence=torch.full((2, 2), 0.1, dtype=torch.float32),
-            authority=torch.full((2, 2), 0.0, dtype=torch.float32),
-            trust=torch.full((2, 2), 0.1, dtype=torch.float32),
+            coverage=torch.full((2, 2), 1.0, dtype=torch.float32),
+            confidence=torch.full((2, 2), 0.95, dtype=torch.float32),
+            authority=torch.full((2, 2), 0.95, dtype=torch.float32),
+            trust=torch.full((2, 2), 0.95, dtype=torch.float32),
+            task_agreement=torch.full((2, 2), 0.95, dtype=torch.float32),
+            registry_support=torch.full((2, 2), 0.95, dtype=torch.float32),
+            semantic_debt=torch.zeros((2, 2), dtype=torch.float32),
+            certified_by=("geometry_corridor", "task_corridor"),
         )
 
         decision = arbiter.arbitrate_bootstrap(
@@ -145,6 +155,122 @@ class TestSemanticContract(unittest.TestCase):
                 decision.internal_authority,
                 torch.full((2, 2), 0.4, dtype=torch.float32),
             )
+        )
+
+    def test_semantic_arbiter_prefers_external_contracts_with_better_semantics(self):
+        arbiter = SemanticArbiter()
+        internal = self._make_contract(
+            source="critic_bootstrap",
+            coverage=torch.full((2, 2), 0.8, dtype=torch.float32),
+            confidence=torch.full((2, 2), 0.8, dtype=torch.float32),
+            authority=torch.full((2, 2), 0.8, dtype=torch.float32),
+            trust=torch.full((2, 2), 0.8, dtype=torch.float32),
+            task_agreement=torch.full((2, 2), 0.8, dtype=torch.float32),
+            registry_support=torch.full((2, 2), 0.8, dtype=torch.float32),
+            semantic_debt=torch.full((2, 2), 0.1, dtype=torch.float32),
+            certified_by=("task_corridor",),
+        )
+        weak_external = self._make_contract(
+            source="replay_suffix",
+            coverage=torch.full((2, 2), 0.2, dtype=torch.float32),
+            confidence=torch.full((2, 2), 0.2, dtype=torch.float32),
+            authority=torch.full((2, 2), 0.1, dtype=torch.float32),
+            trust=torch.full((2, 2), 0.1, dtype=torch.float32),
+            task_agreement=torch.full((2, 2), 0.1, dtype=torch.float32),
+            registry_support=torch.full((2, 2), 0.1, dtype=torch.float32),
+            semantic_debt=torch.full((2, 2), 0.8, dtype=torch.float32),
+            certified_by=("geometry_corridor",),
+        )
+        strong_external = self._make_contract(
+            source="replay_suffix",
+            coverage=torch.full((2, 2), 1.0, dtype=torch.float32),
+            confidence=torch.full((2, 2), 0.95, dtype=torch.float32),
+            authority=torch.full((2, 2), 0.9, dtype=torch.float32),
+            trust=torch.full((2, 2), 0.95, dtype=torch.float32),
+            task_agreement=torch.full((2, 2), 0.9, dtype=torch.float32),
+            registry_support=torch.full((2, 2), 0.9, dtype=torch.float32),
+            semantic_debt=torch.zeros((2, 2), dtype=torch.float32),
+            certified_by=("geometry_corridor", "task_corridor"),
+        )
+
+        weak = arbiter.arbitrate_bootstrap(
+            internal_contract=internal,
+            external_contract=weak_external,
+            takeover_floor=torch.full((2, 2), 0.1, dtype=torch.float32),
+            modulation_bonus=torch.full((2, 2), 0.5, dtype=torch.float32),
+            max_external_authority=0.9,
+        )
+        strong = arbiter.arbitrate_bootstrap(
+            internal_contract=internal,
+            external_contract=strong_external,
+            takeover_floor=torch.full((2, 2), 0.1, dtype=torch.float32),
+            modulation_bonus=torch.full((2, 2), 0.5, dtype=torch.float32),
+            max_external_authority=0.9,
+        )
+
+        self.assertGreater(
+            float(strong.external_authority.mean()),
+            float(weak.external_authority.mean()),
+        )
+        self.assertGreater(
+            float(strong.modulation_bonus.mean()),
+            float(weak.modulation_bonus.mean()),
+        )
+
+    def test_semantic_arbiter_treats_geometry_cert_as_support_not_task_truth(self):
+        arbiter = SemanticArbiter()
+        internal = self._make_contract(
+            source="critic_bootstrap",
+            coverage=torch.full((2, 2), 0.4, dtype=torch.float32),
+            confidence=torch.full((2, 2), 0.4, dtype=torch.float32),
+            authority=torch.full((2, 2), 0.4, dtype=torch.float32),
+            trust=torch.full((2, 2), 0.4, dtype=torch.float32),
+            task_agreement=torch.full((2, 2), 0.4, dtype=torch.float32),
+            registry_support=torch.full((2, 2), 0.4, dtype=torch.float32),
+            semantic_debt=torch.full((2, 2), 0.2, dtype=torch.float32),
+            certified_by=(),
+        )
+        geometry_only = self._make_contract(
+            source="replay_suffix",
+            coverage=torch.full((2, 2), 1.0, dtype=torch.float32),
+            confidence=torch.full((2, 2), 0.9, dtype=torch.float32),
+            authority=torch.full((2, 2), 0.9, dtype=torch.float32),
+            trust=torch.full((2, 2), 0.9, dtype=torch.float32),
+            task_agreement=torch.full((2, 2), 0.9, dtype=torch.float32),
+            registry_support=torch.full((2, 2), 0.9, dtype=torch.float32),
+            semantic_debt=torch.zeros((2, 2), dtype=torch.float32),
+            certified_by=("geometry_corridor",),
+        )
+        task_certified = self._make_contract(
+            source="replay_suffix",
+            coverage=torch.full((2, 2), 1.0, dtype=torch.float32),
+            confidence=torch.full((2, 2), 0.9, dtype=torch.float32),
+            authority=torch.full((2, 2), 0.9, dtype=torch.float32),
+            trust=torch.full((2, 2), 0.9, dtype=torch.float32),
+            task_agreement=torch.full((2, 2), 0.9, dtype=torch.float32),
+            registry_support=torch.full((2, 2), 0.9, dtype=torch.float32),
+            semantic_debt=torch.zeros((2, 2), dtype=torch.float32),
+            certified_by=("geometry_corridor", "task_corridor"),
+        )
+
+        geometry_decision = arbiter.arbitrate_bootstrap(
+            internal_contract=internal,
+            external_contract=geometry_only,
+            takeover_floor=torch.full((2, 2), 0.1, dtype=torch.float32),
+            modulation_bonus=torch.full((2, 2), 0.6, dtype=torch.float32),
+            max_external_authority=0.9,
+        )
+        task_decision = arbiter.arbitrate_bootstrap(
+            internal_contract=internal,
+            external_contract=task_certified,
+            takeover_floor=torch.full((2, 2), 0.1, dtype=torch.float32),
+            modulation_bonus=torch.full((2, 2), 0.6, dtype=torch.float32),
+            max_external_authority=0.9,
+        )
+
+        self.assertGreater(
+            float(task_decision.external_authority.mean()),
+            float(geometry_decision.external_authority.mean()),
         )
 
 

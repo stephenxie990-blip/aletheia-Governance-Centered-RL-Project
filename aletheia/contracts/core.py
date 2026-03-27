@@ -350,6 +350,56 @@ def select_consumer_contract_view(*contracts: SemanticContract) -> ConsumerContr
     return max(views, key=lambda view: (view.score, view.authority_mean, view.trust_mean))
 
 
+def _contract_flag_tensor(reference: Tensor, enabled: bool) -> Tensor:
+    return torch.full_like(reference, 1.0 if enabled else 0.0)
+
+
+def _contract_freshness_scale(reference: Tensor, freshness: int) -> Tensor:
+    freshness_value = max(0.0, float(freshness))
+    return torch.full_like(reference, 1.0 / (1.0 + 0.1 * freshness_value))
+
+
+def _contract_semantic_strength(contract: SemanticContract) -> Tensor:
+    reference = contract.value
+    coverage_gate = (
+        contract.coverage
+        if contract.is_external_source
+        else (0.5 + 0.5 * contract.coverage)
+    ).clamp(0.0, 1.0)
+    debt_scale = (1.0 - 0.75 * contract.semantic_debt).clamp(0.0, 1.0)
+    freshness_scale = _contract_freshness_scale(reference, contract.freshness)
+    task_certified = _contract_flag_tensor(reference, contract.is_task_certified)
+    geometry_certified = _contract_flag_tensor(reference, contract.is_geometry_certified)
+
+    support = (
+        0.25 * contract.confidence
+        + 0.25 * contract.authority
+        + 0.20 * contract.trust
+        + 0.20 * contract.task_agreement
+        + 0.10 * contract.registry_support
+        + 0.15 * task_certified
+        + 0.05 * geometry_certified
+    )
+    support = support * coverage_gate * debt_scale * freshness_scale
+    if contract.is_geometry_certified and not contract.is_task_certified:
+        support = support * 0.5
+    return support.clamp(0.0, 1.0)
+
+
+def _external_baseline_authority(contract: SemanticContract) -> Tensor:
+    reference = contract.value
+    task_certified = _contract_flag_tensor(reference, contract.is_task_certified)
+    baseline = 0.05 * contract.coverage * (
+        0.5 * contract.confidence
+        + 0.3 * contract.task_agreement
+        + 0.2 * task_certified
+    )
+    baseline = baseline * (1.0 - 0.5 * contract.semantic_debt).clamp(0.0, 1.0)
+    if contract.is_geometry_certified and not contract.is_task_certified:
+        baseline = baseline * 0.5
+    return baseline.clamp(0.0, 1.0)
+
+
 @dataclass(frozen=True)
 class SemanticArbiterDecision:
     external_authority: Tensor
@@ -419,12 +469,18 @@ class SemanticArbiter:
         _validate_tensor_shape("max_external_authority", cap_tensor, expected_shape)
         _validate_bounded_tensor("max_external_authority", cap_tensor)
 
-        del internal_contract, external_contract
-
-        clamped_floor = takeover_floor.clamp(0.0, 1.0)
+        semantic_floor = _external_baseline_authority(external_contract)
+        clamped_floor = torch.maximum(
+            takeover_floor.clamp(0.0, 1.0),
+            torch.minimum(semantic_floor, cap_tensor),
+        )
         remaining_capacity = (cap_tensor - clamped_floor).clamp(0.0, 1.0)
+        external_strength = _contract_semantic_strength(external_contract)
+        internal_strength = _contract_semantic_strength(internal_contract)
+        semantic_margin = (external_strength - internal_strength).clamp(-1.0, 1.0)
+        bonus_gate = (0.5 + semantic_margin).clamp(0.0, 1.0)
         clamped_bonus = modulation_bonus.clamp(0.0, 1.0)
-        clamped_bonus = torch.minimum(clamped_bonus, remaining_capacity)
+        clamped_bonus = torch.minimum(clamped_bonus, remaining_capacity) * bonus_gate
         external_authority = (clamped_floor + clamped_bonus).clamp(0.0, 1.0)
         internal_authority = (1.0 - external_authority).clamp(0.0, 1.0)
 
