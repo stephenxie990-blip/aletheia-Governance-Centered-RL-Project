@@ -147,6 +147,25 @@ class _NeverDoneEnv:
         return None
 
 
+class _ExplodingEnv:
+    def __init__(self):
+        self.observation_space = SimpleNamespace(shape=(4,))
+        self.action_space = SimpleNamespace(n=2)
+        self.reset_count = 0
+
+    def reset(self, seed=None):
+        del seed
+        self.reset_count += 1
+        return np.zeros((4,), dtype=np.float32), {}
+
+    def step(self, action):
+        del action
+        raise RuntimeError("env boom")
+
+    def close(self):
+        return None
+
+
 class _DummyAgent:
     def __init__(self):
         self.profile = SimpleNamespace(is_discrete=True, action_dim=2)
@@ -432,6 +451,16 @@ class _ModeAwareCritic(nn.Module):
         return SimpleNamespace(values_real_main=value, uncertainty_raw=torch.zeros_like(value))
 
 
+class _TinyCollectorModel(nn.Module):
+    def forward(self, vitals, temperature: float = 1.0, intent=None):
+        del temperature, intent
+        batch = vitals.shape[0]
+        loc = torch.zeros(batch, 2, device=vitals.device)
+        dist = torch.distributions.Normal(loc, torch.ones_like(loc))
+        value = torch.zeros(batch, 1, device=vitals.device)
+        return dist, value
+
+
 class TestRunTrainContracts(unittest.TestCase):
     def test_agent_rollout_collector_preserves_agent_outputs_and_forced_truncation(self):
         agent = _DummyAgent()
@@ -452,6 +481,24 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertEqual(agent.reset_calls, 2)
         self.assertEqual(len(collector.episode_returns), 1)
         self.assertAlmostEqual(float(collector.episode_returns[0]), 3.0, places=5)
+
+    def test_agent_rollout_collector_collect_propagates_errors(self):
+        agent = _DummyAgent()
+        collector = api.AgentRolloutCollector(agent=agent, env=_ExplodingEnv(), max_steps=2)
+
+        with self.assertRaisesRegex(RuntimeError, "env boom"):
+            collector.collect(num_steps=1, deterministic=True)
+
+    def test_rollout_collector_collect_propagates_errors(self):
+        collector = train_mod.RolloutCollector(
+            model=_TinyCollectorModel(),
+            env=_ExplodingEnv(),
+            device=torch.device("cpu"),
+            max_steps=2,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "env boom"):
+            collector.collect(num_steps=1, deterministic=True)
 
     def test_evaluate_agent_resets_agent_every_episode(self):
         agent = _DummyAgent()
@@ -604,6 +651,46 @@ class TestRunTrainContracts(unittest.TestCase):
 
         self.assertEqual(loop.global_step, 1)
         self.assertEqual([kind for kind, *_ in events], ["eval", "log", "save"])
+
+    def test_training_loop_run_rejects_collectors_returning_none(self):
+        loop = SimpleNamespace()
+        loop.config = SimpleNamespace(total_steps=1, num_train_steps=1, total_env_steps=1, wm_pretrain_steps=0, warmup_steps=0, imagination_only=False)
+        loop.device = torch.device("cpu")
+        loop.global_step = 0
+        loop.episode_count = 0
+        loop.env_steps_collected = 0
+        loop._steps_since_collect = 1
+        loop.train_steps_per_cycle = 1
+        loop.collect_steps_per_cycle = 1
+        loop.model = object()
+        loop.logger_fn = lambda metrics, step=0: None
+        loop._should_collect = lambda: True
+        loop._add_to_buffer = lambda result: (_ for _ in ()).throw(AssertionError("should not add None batch"))
+        loop._sync_episode_counts = lambda collector: None
+        loop._build_real_batch = lambda: {"real": True}
+        loop._build_imagined_batch = lambda: {"imag": True}
+        loop._build_wm_batch = lambda: {"wm": True}
+        loop._select_rl_batch = lambda real_batch, imag_batch: (real_batch, "real", 0.0)
+        loop.should_log = lambda: False
+        loop.should_eval = lambda: False
+        loop.should_save = lambda: False
+
+        def train_step(**kwargs):
+            del kwargs
+            loop.global_step += 1
+            return {"loss_actor": 0.0}
+
+        loop.train_step = train_step
+
+        class _NullCollector:
+            episode_returns = []
+
+            def collect(self, num_steps, deterministic=False):
+                del num_steps, deterministic
+                return None
+
+        with self.assertRaisesRegex(RuntimeError, "Data collector returned None"):
+            train_mod.TrainingLoop.run(loop, num_steps=1, data_collector=_NullCollector())
 
     def test_training_config_strict_allows_distinct_env_step_budget(self):
         cfg = TrainingConfig(

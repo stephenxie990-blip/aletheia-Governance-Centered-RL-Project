@@ -7831,24 +7831,21 @@ class RolloutCollector:
         self,
         num_steps: int,
         deterministic: bool = False,
-    ) -> Optional[Dict[str, np.ndarray]]:
+    ) -> Dict[str, np.ndarray]:
         """Collect *num_steps* transitions.
 
         The model is switched to eval mode during collection and
         restored to train mode afterwards.
-
-        Returns ``None`` on failure.
         """
         was_training = bool(self.model.training)
         self.model.eval()
         try:
-            data = self._collect_impl(num_steps, deterministic)
+            return self._collect_impl(num_steps, deterministic)
         except Exception as e:
-            logger.error(f"Error during data collection: {e}")
-            data = None
+            logger.exception(f"Error during data collection: {e}")
+            raise
         finally:
             self.model.train(was_training)
-        return data
 
     def get_statistics(self) -> Dict[str, float]:
         """Return aggregate episode statistics."""
@@ -20748,8 +20745,11 @@ class TrainingLoop:
                 result = data_collector.collect(
                     num_steps=self.collect_steps_per_cycle
                 )
-                if result is not None:
-                    self._add_to_buffer(result)
+                if result is None:
+                    raise RuntimeError(
+                        "Data collector returned None instead of raising on collection failure"
+                    )
+                self._add_to_buffer(result)
                 self._steps_since_collect = 0
                 self._sync_episode_counts(data_collector)
             elif data_collector is None:

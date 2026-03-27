@@ -2435,12 +2435,12 @@ class AgentRolloutCollector:
         self,
         num_steps: int,
         deterministic: bool = False,
-    ) -> Optional[Dict[str, np.ndarray]]:
+    ) -> Dict[str, np.ndarray]:
         try:
             return self._collect_impl(num_steps=num_steps, deterministic=deterministic)
         except Exception as exc:
-            logger.error('Error during agent data collection: %s', exc)
-            return None
+            logger.exception('Error during agent data collection: %s', exc)
+            raise
 
     def get_statistics(self) -> Dict[str, float]:
         if not self.episode_returns:
