@@ -3404,7 +3404,9 @@ class TrainingStep:
                 vn_beta = float(getattr(self.config.rl, "value_norm_beta", 0.999))
                 self.value_normalizer = ValueNormalizer(beta=vn_beta).to(self.device)
             except Exception as e:
-                logger.warning("ValueNormalizer unavailable, fallback to raw critic loss: %s", e)
+                raise RuntimeError(
+                    f"ValueNormalizer initialization failed while value normalization is enabled: {e}"
+                ) from e
 
         actor = getattr(self.model, "actor", None)
         self.use_fixed_gamma_for_imag = bool(getattr(self.config.rl, "use_fixed_gamma", False))

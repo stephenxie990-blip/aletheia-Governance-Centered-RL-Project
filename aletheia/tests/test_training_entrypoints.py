@@ -2,6 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 import torch
@@ -1367,6 +1368,26 @@ class TestTrainingEntryPoints(unittest.TestCase):
         self.assertFalse(bool(values.requires_grad))
         self.assertIsNone(values.grad_fn)
         self.assertIsNone(policy_features.grad)
+
+    def test_training_loop_rejects_value_normalizer_init_failures_when_enabled(self):
+        device = torch.device("cpu")
+        model = _DummyModel(4, 2, device).to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        config = TrainingConfig()
+        config.rl.use_value_normalization = True
+
+        with mock.patch(
+            "aletheia.aletheia_actor_critic.ValueNormalizer",
+            side_effect=RuntimeError("vn boom"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "ValueNormalizer"):
+                TrainingLoop(
+                    model=model,
+                    opt_bundle=_single_rl_opt_bundle(optimizer),
+                    config=config,
+                    buffer=None,
+                    device=device,
+                )
 
     def test_training_step_uses_critic_compute_loss_contract(self):
         device = torch.device("cpu")
