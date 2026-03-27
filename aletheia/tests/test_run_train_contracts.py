@@ -443,6 +443,28 @@ class _FailingModeAwareActor(nn.Module):
         raise RuntimeError("telemetry actor boom")
 
 
+class _BadEntropyModeDist(_ModeDist):
+    def entropy(self):
+        return object()
+
+
+class _BadEntropyModeAwareActor(_ModeAwareActor):
+    def forward(self, feat):
+        self.seen_training.append(bool(self.training))
+        return _BadEntropyModeDist(self.linear(feat))
+
+
+class _MissingPolicyStatsDist:
+    def entropy(self):
+        return torch.tensor([0.0], dtype=torch.float32)
+
+
+class _BadKlModeAwareActor(nn.Module):
+    def forward(self, feat):
+        del feat
+        return _MissingPolicyStatsDist()
+
+
 class _ModeAwareCritic(nn.Module):
     def __init__(self):
         super().__init__()
@@ -639,6 +661,32 @@ class TestRunTrainContracts(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(RuntimeError, "registry policy forward"):
+            api._evaluate_agent(env, handle, episodes=1, max_steps=4)
+
+    def test_evaluate_agent_raises_when_entropy_telemetry_stat_is_malformed(self):
+        handle = self._make_mode_handle()
+        handle.actor = _BadEntropyModeAwareActor()
+        env = _AlternatingObsEnv(
+            observations=[
+                np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                np.array([-1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            ]
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "action entropy"):
+            api._evaluate_agent(env, handle, episodes=1, max_steps=4)
+
+    def test_evaluate_agent_raises_when_anchor_telemetry_kl_is_unavailable(self):
+        handle = self._make_mode_handle()
+        handle._real_stability_eval_anchor_actor = _BadKlModeAwareActor()
+        env = _AlternatingObsEnv(
+            observations=[
+                np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                np.array([-1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            ]
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "anchor policy KL"):
             api._evaluate_agent(env, handle, episodes=1, max_steps=4)
 
     def test_training_loop_run_stops_when_eval_requests_early_stop(self):

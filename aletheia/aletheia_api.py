@@ -2470,15 +2470,28 @@ def create_agent_rollout_collector(
 _REAL_STABILITY_CORRIDOR_KL_THRESHOLD = 0.05
 
 
-def _reduce_dist_stat(value: Any) -> Optional[float]:
+def _reduce_dist_stat(
+    value: Any,
+    *,
+    strict: bool = False,
+    failure_context: str = "distribution statistic",
+) -> Optional[float]:
     if value is None:
+        if strict:
+            raise RuntimeError(f"{failure_context} failed: value is unavailable")
         return None
     if not isinstance(value, torch.Tensor):
         try:
             value = torch.as_tensor(value, dtype=torch.float32)
-        except Exception:
+        except Exception as exc:
+            if strict:
+                raise RuntimeError(
+                    f"{failure_context} failed: could not coerce value to tensor ({exc})"
+                ) from exc
             return None
     if value.numel() <= 0:
+        if strict:
+            raise RuntimeError(f"{failure_context} failed: value is empty")
         return None
     value_t = value.detach().to(dtype=torch.float32)
     if value_t.dim() > 1:
@@ -2511,7 +2524,13 @@ def _resolve_dist_probs_and_log_probs(
     return probs, log_probs
 
 
-def _compute_dist_kl(anchor_dist: Any, current_dist: Any) -> Optional[torch.Tensor]:
+def _compute_dist_kl(
+    anchor_dist: Any,
+    current_dist: Any,
+    *,
+    strict: bool = False,
+    failure_context: str = "policy KL",
+) -> Optional[torch.Tensor]:
     anchor_probs, anchor_log_probs = _resolve_dist_probs_and_log_probs(anchor_dist)
     _, current_log_probs = _resolve_dist_probs_and_log_probs(current_dist)
     if anchor_probs is not None and anchor_log_probs is not None and current_log_probs is not None:
@@ -2519,6 +2538,10 @@ def _compute_dist_kl(anchor_dist: Any, current_dist: Any) -> Optional[torch.Tens
             anchor_probs.detach()
             * (anchor_log_probs.detach() - current_log_probs)
         ).sum(dim=-1)
+    if strict:
+        raise RuntimeError(
+            f"{failure_context} failed: could not resolve probability/log-prob tensors"
+        )
     return None
 
 
@@ -2599,7 +2622,11 @@ def _run_episode_agent_with_telemetry(
                 failure_context="real-stability telemetry current policy forward",
             )
             entropy_fn = getattr(current_dist, "entropy", None)
-            entropy_val = _reduce_dist_stat(entropy_fn() if callable(entropy_fn) else None)
+            entropy_val = _reduce_dist_stat(
+                entropy_fn() if callable(entropy_fn) else None,
+                strict=True,
+                failure_context="real-stability telemetry action entropy",
+            )
             if entropy_val is not None:
                 entropy_values.append(entropy_val)
             anchor_kl_val: Optional[float] = None
@@ -2611,7 +2638,14 @@ def _run_episode_agent_with_telemetry(
                     failure_context="real-stability telemetry anchor policy forward",
                 )
                 anchor_kl_val = _reduce_dist_stat(
-                    _compute_dist_kl(anchor_dist, current_dist)
+                    _compute_dist_kl(
+                        anchor_dist,
+                        current_dist,
+                        strict=True,
+                        failure_context="real-stability telemetry anchor policy KL",
+                    ),
+                    strict=True,
+                    failure_context="real-stability telemetry anchor policy KL",
                 )
                 if anchor_kl_val is not None:
                     policy_kl_values.append(anchor_kl_val)
@@ -2629,7 +2663,14 @@ def _run_episode_agent_with_telemetry(
                     failure_context="real-stability telemetry registry policy forward",
                 )
                 kl_val = _reduce_dist_stat(
-                    _compute_dist_kl(anchor_dist, current_dist)
+                    _compute_dist_kl(
+                        anchor_dist,
+                        current_dist,
+                        strict=True,
+                        failure_context="real-stability telemetry registry policy KL",
+                    ),
+                    strict=True,
+                    failure_context="real-stability telemetry registry policy KL",
                 )
                 if kl_val is None:
                     continue
