@@ -2026,7 +2026,7 @@ class AgentHandle:
 
             # World-model forward
             if self.world_model is not None:
-                from .aletheia_train import isolate_policy_wm_state
+                from .aletheia_train import isolate_policy_wm_state, resolve_policy_wall_strength
 
                 a_prev = self._prev_action
                 if a_prev is None:
@@ -2048,12 +2048,7 @@ class AgentHandle:
                     obs_t, a_prev, self._wm_state, deterministic_state=deterministic
                 )
 
-                wall_strength = 1.0
-                if hasattr(self.world_model, "get_wall_strength"):
-                    try:
-                        wall_strength = float(self.world_model.get_wall_strength())
-                    except Exception:
-                        wall_strength = 1.0
+                wall_strength = resolve_policy_wall_strength(self.world_model)
 
                 sfp = isolate_policy_wm_state(
                     self._wm_state,

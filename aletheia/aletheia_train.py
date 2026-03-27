@@ -8172,7 +8172,8 @@ class _ModelWrapper(nn.Module):
 
     def policy_from_wm_state(self, wm_state: Any) -> Tensor:
         """Project an existing WM state to policy features without reinitialising RSSM."""
-        sp = isolate_policy_wm_state(wm_state, wall_strength=1.0)
+        wall_strength = resolve_policy_wall_strength(self.world_model)
+        sp = isolate_policy_wm_state(wm_state, wall_strength=wall_strength)
 
         x_proj = getattr(sp, "x_proj", None)
         if x_proj is None:
@@ -8197,7 +8198,7 @@ class _ModelWrapper(nn.Module):
                 s_ctrl=s_ctrl,
                 x_t=obs_embed,
                 x_proj=x_proj,
-                wall_strength=1.0,
+                wall_strength=wall_strength,
             )
             return pf.f_policy
         return x_rl
@@ -8246,6 +8247,19 @@ def isolate_policy_wm_state(
         "WM state must implement isolate_gradients(context='policy', wall_strength=...). "
         "Legacy policy WMState adapters are no longer supported."
     )
+
+
+def resolve_policy_wall_strength(
+    world_model: Any,
+    default: float = 1.0,
+) -> float:
+    wall_strength = float(default)
+    if world_model is not None and hasattr(world_model, "get_wall_strength"):
+        try:
+            wall_strength = float(world_model.get_wall_strength())
+        except Exception:
+            wall_strength = float(default)
+    return max(0.0, min(1.0, wall_strength))
 # ── Training Loop ───────────────────────────────────────────────────────────
 
 

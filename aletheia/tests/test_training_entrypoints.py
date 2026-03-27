@@ -15,6 +15,7 @@ if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
 from aletheia.aletheia_train import (
+    _ModelWrapper,
     OptimizerBundle,
     TrainingConfig,
     TrainingLoop,
@@ -293,6 +294,46 @@ class _SemanticWMState:
             self.h_shared.detach(),
             self.z.detach(),
         )
+
+
+class _WallStrengthTrackingWMState:
+    def __init__(self, x_t, x_proj, s_ctrl, tracker):
+        self.x_t = x_t
+        self.x_proj = x_proj
+        self.s_ctrl = s_ctrl
+        self.z_task = None
+        self._tracker = tracker
+
+    def isolate_gradients(self, context: str, wall_strength: float = 1.0):
+        self._tracker["context"] = str(context)
+        self._tracker["wall_strength"] = float(wall_strength)
+        return _WallStrengthTrackingWMState(
+            x_t=self.x_t.detach(),
+            x_proj=self.x_proj,
+            s_ctrl=self.s_ctrl,
+            tracker=self._tracker,
+        )
+
+
+class _WallStrengthTrackingWorldModel(nn.Module):
+    def __init__(self, wall_strength: float, ctrl_dim: int = 3):
+        super().__init__()
+        self._wall_strength = float(wall_strength)
+        self._wm_config = SimpleNamespace(ctrl_dim=ctrl_dim)
+
+    def get_wall_strength(self) -> float:
+        return self._wall_strength
+
+
+class _WallStrengthTrackingRouter(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.last_wall_strength = None
+
+    def forward_components(self, x_rl, s_ctrl, x_t, x_proj, wall_strength):
+        del s_ctrl, x_t, x_proj
+        self.last_wall_strength = float(wall_strength)
+        return SimpleNamespace(f_policy=x_rl)
 
 
 class _SemanticRSSM:
@@ -1326,6 +1367,31 @@ class TestTrainingEntryPoints(unittest.TestCase):
         self.assertAlmostEqual(float(metrics["critic/router_route"]), 0.2, places=6)
         self.assertAlmostEqual(float(metrics["critic/router_load_balance"]), 0.1, places=6)
         self.assertAlmostEqual(float(metrics["critic/router_entropy"]), 0.05, places=6)
+
+    def test_model_wrapper_policy_from_wm_state_uses_world_model_wall_strength(self):
+        device = torch.device("cpu")
+        tracker = {}
+        wm_state = _WallStrengthTrackingWMState(
+            x_t=torch.randn(2, 4, device=device, requires_grad=True),
+            x_proj=torch.randn(2, 4, device=device),
+            s_ctrl=torch.randn(2, 3, device=device),
+            tracker=tracker,
+        )
+        world_model = _WallStrengthTrackingWorldModel(wall_strength=0.25, ctrl_dim=3)
+        router = _WallStrengthTrackingRouter()
+        wrapper = _ModelWrapper(
+            actor=nn.Identity(),
+            critic=nn.Identity(),
+            world_model=world_model,
+            router=router,
+        )
+
+        features = wrapper.policy_from_wm_state(wm_state)
+
+        self.assertAlmostEqual(float(tracker["wall_strength"]), 0.25, places=6)
+        self.assertEqual(str(tracker["context"]), "policy")
+        self.assertAlmostEqual(float(router.last_wall_strength), 0.25, places=6)
+        self.assertTrue(torch.allclose(features, wm_state.x_proj))
 
     def test_actor_drift_guard_and_slow_reg_scale_activate_on_large_gap(self):
         device = torch.device("cpu")
