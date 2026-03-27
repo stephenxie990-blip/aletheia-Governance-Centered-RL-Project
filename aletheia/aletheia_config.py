@@ -1037,6 +1037,7 @@ class ConsistencyAuditorConfig:
     msc: MSCConfig = field(default_factory=MSCConfig)
     nst: NSTConfig = field(default_factory=NSTConfig)
     sc: SCConfig = field(default_factory=SCConfig)
+    strict_auxiliary_losses: bool = True
     remaining_steps_margin: int = 10
     no_done_warning_threshold: float = 0.5
 

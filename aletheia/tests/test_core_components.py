@@ -45,6 +45,7 @@ from aletheia.aletheia_config import (
     ContinueConfig,
     GradientWallConfig,
     LossWeightsConfig,
+    MHCConfig,
     MSCConfig,
     NSTConfig,
     ProjectionConfig,
@@ -477,7 +478,10 @@ class TestConsistencyAuditorRemainingSteps(unittest.TestCase):
     def test_sc_only_audit_does_not_compute_remaining_steps(self):
         """只开 SC 时不应额外计算 remaining_steps"""
         auditor = ConsistencyAuditor(
-            config=ConsistencyAuditorConfig(sc=SCConfig(enabled=True, horizons=(2,))),
+            config=ConsistencyAuditorConfig(
+                sc=SCConfig(enabled=True, horizons=(2,)),
+                strict_auxiliary_losses=False,
+            ),
             sc_module=nn.Identity(),
         )
         trajectory = self._make_trajectory()
@@ -545,6 +549,123 @@ class TestConsistencyAuditorRemainingSteps(unittest.TestCase):
             3.0,
             places=6,
         )
+
+
+class _RaisingMHCHead(nn.Module):
+    def loss(self, features, continues):
+        del features, continues
+        raise RuntimeError("mhc boom")
+
+
+class _RaisingMSCHead(nn.Module):
+    def compute_loss(self, features, remaining_steps, true_danger=None):
+        del features, remaining_steps, true_danger
+        raise RuntimeError("msc boom")
+
+
+class _TerminationMSCHead(nn.Module):
+    def forward(self, features):
+        return {
+            "termination_prob_dict": {
+                1: torch.full(features.shape[:-1], 0.5, device=features.device),
+            }
+        }
+
+
+class _RaisingNSTModule(nn.Module):
+    def forward(self, termination_probs, remaining_steps):
+        del termination_probs, remaining_steps
+        raise RuntimeError("nst boom")
+
+
+class _RaisingSCModule(nn.Module):
+    def compute_loss(self, world_model, vitals, actions, seq_result, continues):
+        del world_model, vitals, actions, seq_result, continues
+        raise RuntimeError("sc boom")
+
+
+class TestConsistencyAuditorStrictFailures(unittest.TestCase):
+    def _make_trajectory(self, batch_size: int = 2, seq_len: int = 4) -> WMTrajectory:
+        return TestConsistencyAuditorRemainingSteps()._make_trajectory(
+            batch_size=batch_size,
+            seq_len=seq_len,
+        )
+
+    def test_mhc_failure_raises_in_strict_mode_by_default(self):
+        auditor = ConsistencyAuditor(
+            config=ConsistencyAuditorConfig(mhc=MHCConfig(enabled=True)),
+            mhc_head=_RaisingMHCHead(),
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "MHC auxiliary loss failed"):
+            auditor.audit(self._make_trajectory(), world_model_ref=None)
+
+    def test_msc_failure_raises_in_strict_mode_by_default(self):
+        auditor = ConsistencyAuditor(
+            config=ConsistencyAuditorConfig(msc=MSCConfig(enabled=True)),
+            msc_head=_RaisingMSCHead(),
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "MSC auxiliary loss failed"):
+            auditor.audit(self._make_trajectory(), world_model_ref=None)
+
+    def test_nst_failure_raises_in_strict_mode_by_default(self):
+        auditor = ConsistencyAuditor(
+            config=ConsistencyAuditorConfig(
+                msc=MSCConfig(enabled=True, horizons=(1,)),
+                nst=NSTConfig(enabled=True, n_steps=(1,)),
+            ),
+            msc_head=_TerminationMSCHead(),
+            nst_module=_RaisingNSTModule(),
+        )
+        trajectory = self._make_trajectory()
+        trajectory.remaining_steps = torch.ones_like(trajectory.dones, dtype=torch.long)
+
+        with mock.patch.object(auditor, "_compute_msc", return_value=torch.tensor(0.0)):
+            with self.assertRaisesRegex(RuntimeError, "NST auxiliary loss failed"):
+                auditor.audit(trajectory, world_model_ref=None)
+
+    def test_sc_failure_raises_in_strict_mode_by_default(self):
+        auditor = ConsistencyAuditor(
+            config=ConsistencyAuditorConfig(sc=SCConfig(enabled=True, horizons=(1,))),
+            sc_module=_RaisingSCModule(),
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "SC auxiliary loss failed"):
+            auditor.audit(self._make_trajectory(), world_model_ref=object())
+
+    def test_mhc_failure_can_fall_back_to_zero_loss_in_non_strict_mode(self):
+        auditor = ConsistencyAuditor(
+            config=ConsistencyAuditorConfig(
+                strict_auxiliary_losses=False,
+                mhc=MHCConfig(enabled=True),
+            ),
+            mhc_head=_RaisingMHCHead(),
+        )
+
+        report = auditor.audit(self._make_trajectory(), world_model_ref=None)
+
+        self.assertAlmostEqual(float(report.mhc_loss.item()), 0.0, places=6)
+        self.assertTrue(bool(report.metrics["mhc_failed"]))
+
+    def test_nst_failure_can_fall_back_to_zero_loss_in_non_strict_mode(self):
+        auditor = ConsistencyAuditor(
+            config=ConsistencyAuditorConfig(
+                strict_auxiliary_losses=False,
+                msc=MSCConfig(enabled=True, horizons=(1,)),
+                nst=NSTConfig(enabled=True, n_steps=(1,)),
+            ),
+            msc_head=_TerminationMSCHead(),
+            nst_module=_RaisingNSTModule(),
+        )
+        trajectory = self._make_trajectory()
+        trajectory.remaining_steps = torch.ones_like(trajectory.dones, dtype=torch.long)
+
+        with mock.patch.object(auditor, "_compute_msc", return_value=torch.tensor(0.0)):
+            report = auditor.audit(trajectory, world_model_ref=None)
+
+        self.assertAlmostEqual(float(report.nst_loss.item()), 0.0, places=6)
+        self.assertTrue(bool(report.metrics["nst_failed"]))
 
 
 class _FakeShortcutTransitionOut:

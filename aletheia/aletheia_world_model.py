@@ -5159,11 +5159,15 @@ def compute_mhc_loss(
     mhc_head: MHCHeadProtocol,
     features: Tensor,
     continues: Tensor,
+    *,
+    strict: bool = True,
 ) -> Tuple[Tensor, Dict[str, Any]]:
     try:
         loss, metrics = mhc_head.loss(features, continues)
         return loss, {f"mhc_{k}": v for k, v in metrics.items()}
     except Exception as e:
+        if strict:
+            raise RuntimeError(f"MHC auxiliary loss failed: {e}") from e
         logger.exception(f"MHC loss computation failed: {e}")
         return torch.tensor(0.0, device=features.device), {'mhc_failed': True}
 
@@ -5173,6 +5177,8 @@ def compute_msc_loss(
     features: Tensor,
     remaining_steps: Tensor,
     true_danger: Optional[Tensor] = None,
+    *,
+    strict: bool = True,
 ) -> Tuple[Tensor, Dict[str, Any]]:
     try:
         loss, metrics = msc_head.compute_loss(
@@ -5180,6 +5186,8 @@ def compute_msc_loss(
         )
         return loss, {f"msc_{k}": v for k, v in metrics.items()}
     except Exception as e:
+        if strict:
+            raise RuntimeError(f"MSC auxiliary loss failed: {e}") from e
         logger.exception(f"MSC loss computation failed: {e}")
         return torch.tensor(0.0, device=features.device), {'msc_failed': True}
 
@@ -5188,11 +5196,15 @@ def compute_nst_loss(
     nst_module: "NStepTerminationLoss",
     termination_probs: Dict[int, Tensor],
     remaining_steps: Tensor,
+    *,
+    strict: bool = True,
 ) -> Tuple[Tensor, Dict[str, Any]]:
     try:
         loss, metrics = nst_module(termination_probs, remaining_steps)
         return loss, {f"nst_{k}": v for k, v in metrics.items()}
     except Exception as e:
+        if strict:
+            raise RuntimeError(f"NST auxiliary loss failed: {e}") from e
         logger.exception(f"NST loss computation failed: {e}")
         return torch.tensor(0.0, device=remaining_steps.device), {'nst_failed': True}
 
@@ -5201,6 +5213,8 @@ def compute_sc_loss(
     sc_module: "ShortcutConsistencyLoss",
     world_model: WorldModelProtocol,
     trajectory: WMTrajectory,
+    *,
+    strict: bool = True,
 ) -> Tuple[Tensor, Dict[str, Any]]:
     try:
         loss, metrics = sc_module.compute_loss(
@@ -5212,6 +5226,8 @@ def compute_sc_loss(
         )
         return loss, {f"sc_{k}": v for k, v in metrics.items()}
     except Exception as e:
+        if strict:
+            raise RuntimeError(f"SC auxiliary loss failed: {e}") from e
         logger.exception(f"SC loss computation failed: {e}")
         return torch.tensor(0.0, device=trajectory.device), {'sc_failed': True}
 
@@ -5507,6 +5523,10 @@ class ConsistencyAuditor(nn.Module):
     def any_enabled(self) -> bool:
         return self.mhc_enabled or self.msc_enabled or self.nst_enabled or self.sc_enabled
 
+    @property
+    def strict_auxiliary_losses(self) -> bool:
+        return bool(getattr(self.config, "strict_auxiliary_losses", True))
+
     # --- 配置 ---
     def set_danger_fn(self, fn: Callable[[Tensor], Tensor]) -> None:
         self.__dict__['_danger_fn'] = fn
@@ -5564,7 +5584,12 @@ class ConsistencyAuditor(nn.Module):
     def _compute_mhc(self, trajectory, metrics, weights) -> Tensor:
         if not self.mhc_enabled or self.msc_enabled:
             return torch.tensor(0.0, device=trajectory.device)
-        loss, m = compute_mhc_loss(self._mhc_head, trajectory.feats_post, trajectory.continues)
+        loss, m = compute_mhc_loss(
+            self._mhc_head,
+            trajectory.feats_post,
+            trajectory.continues,
+            strict=self.strict_auxiliary_losses,
+        )
         metrics.update(m)
         return loss * weights.get('mhc', self.config.mhc.loss_scale)
 
@@ -5572,17 +5597,31 @@ class ConsistencyAuditor(nn.Module):
         if not self.msc_enabled:
             return torch.tensor(0.0, device=trajectory.device)
         if remaining_steps is None:
+            if self.strict_auxiliary_losses:
+                raise RuntimeError("MSC auxiliary loss failed: remaining_steps unavailable")
             return torch.tensor(0.0, device=trajectory.device)
         danger = self._compute_danger(trajectory)
-        loss, m = compute_msc_loss(self._msc_head, trajectory.feats_post, remaining_steps, danger)
+        loss, m = compute_msc_loss(
+            self._msc_head,
+            trajectory.feats_post,
+            remaining_steps,
+            danger,
+            strict=self.strict_auxiliary_losses,
+        )
         metrics.update(m)
         return loss * weights.get('msc', self.config.msc.loss_scale)
 
     def _compute_nst(self, trajectory, remaining_steps: Optional[Tensor], metrics, weights) -> Tensor:
         device = trajectory.device
-        if not self.nst_enabled or not self.msc_enabled or self._msc_head is None:
+        if not self.nst_enabled:
+            return torch.tensor(0.0, device=device)
+        if not self.msc_enabled or self._msc_head is None:
+            if self.strict_auxiliary_losses:
+                raise RuntimeError("NST auxiliary loss failed: MSC support is required")
             return torch.tensor(0.0, device=device)
         if remaining_steps is None:
+            if self.strict_auxiliary_losses:
+                raise RuntimeError("NST auxiliary loss failed: remaining_steps unavailable")
             return torch.tensor(0.0, device=device)
         try:
             msc_output = self._msc_head(trajectory.feats_post)
@@ -5590,21 +5629,47 @@ class ConsistencyAuditor(nn.Module):
             if term_probs is None:
                 raw_term_probs = msc_output.get('termination_probs')
                 if raw_term_probs is None:
+                    if self.strict_auxiliary_losses:
+                        raise RuntimeError(
+                            "NST auxiliary loss failed: MSC output missing termination probabilities"
+                        )
                     return torch.tensor(0.0, device=device)
                 term_probs = self._msc_head.build_termination_prob_dict(raw_term_probs)
             if not term_probs:
+                if self.strict_auxiliary_losses:
+                    raise RuntimeError(
+                        "NST auxiliary loss failed: MSC termination probability dict is empty"
+                    )
                 return torch.tensor(0.0, device=device)
-            loss, m = compute_nst_loss(self._nst_module, term_probs, remaining_steps)
+            loss, m = compute_nst_loss(
+                self._nst_module,
+                term_probs,
+                remaining_steps,
+                strict=self.strict_auxiliary_losses,
+            )
             metrics.update(m)
             return loss * weights.get('nst', self.config.nst.loss_scale)
         except Exception as e:
+            if self.strict_auxiliary_losses:
+                if isinstance(e, RuntimeError) and "NST auxiliary loss failed" in str(e):
+                    raise
+                raise RuntimeError(f"NST auxiliary loss failed: {e}") from e
             logger.warning(f"NST computation failed: {e}")
             return torch.tensor(0.0, device=device)
 
     def _compute_sc(self, trajectory, world_model_ref, metrics, weights) -> Tensor:
-        if not self.sc_enabled or world_model_ref is None:
+        if not self.sc_enabled:
             return torch.tensor(0.0, device=trajectory.device)
-        loss, m = compute_sc_loss(self._sc_module, world_model_ref, trajectory)
+        if world_model_ref is None:
+            if self.strict_auxiliary_losses:
+                raise RuntimeError("SC auxiliary loss failed: world_model_ref is required")
+            return torch.tensor(0.0, device=trajectory.device)
+        loss, m = compute_sc_loss(
+            self._sc_module,
+            world_model_ref,
+            trajectory,
+            strict=self.strict_auxiliary_losses,
+        )
         metrics.update(m)
         return loss * weights.get('sc', self.config.sc.loss_scale)
 
