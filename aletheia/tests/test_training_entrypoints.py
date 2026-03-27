@@ -328,6 +328,12 @@ class _ReplayAnchoredSemanticWorldModel(nn.Module):
         return _LossPacket(torch.tensor(0.0, device=self.action_to_h.weight.device))
 
 
+class _FailingSemanticWorldModel(_SemanticWorldModel):
+    def compute_loss(self, trajectory):
+        del trajectory
+        raise RuntimeError("boom from wm")
+
+
 class _SemanticModel(nn.Module):
     def __init__(self, vital_dim: int):
         super().__init__()
@@ -340,6 +346,12 @@ class _SemanticModel(nn.Module):
         value = self.critic(vitals)
         dist = D.Normal(torch.zeros_like(vitals[..., :2]), torch.ones_like(vitals[..., :2]))
         return dist, value
+
+
+class _FailingSemanticModel(_SemanticModel):
+    def __init__(self, vital_dim: int):
+        super().__init__(vital_dim)
+        self.world_model = _FailingSemanticWorldModel()
 
 
 class _ReplayAnchoredSemanticModel(nn.Module):
@@ -1303,6 +1315,29 @@ class TestTrainingEntryPoints(unittest.TestCase):
         self.assertGreater(float(metrics["wm/semantic_consistency_penalty"]), 0.0)
         self.assertGreater(float(metrics["loss_wm"]), 0.0)
         self.assertGreater(float(metrics["wm_grad_norm"]), 0.0)
+
+    def test_world_model_failure_aborts_step_before_rl_update(self):
+        device = torch.device("cpu")
+        model = _FailingSemanticModel(4).to(device)
+        opt_bundle = OptimizerBundle(
+            wm_optimizer=torch.optim.Adam(model.world_model.parameters(), lr=1e-3),
+            rl_optimizer=torch.optim.Adam(model.critic.parameters(), lr=1e-3),
+        )
+        stepper = TrainingStep(model=model, opt_bundle=opt_bundle, config=TrainingConfig(), device=device)
+        batch = self._make_batch(model, device)
+        critic_before = {
+            name: param.detach().clone()
+            for name, param in model.critic.named_parameters()
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "World-model update failed"):
+            stepper.run_step(batch=batch, rl_batch=batch, wm_batch=batch, source_tag="real")
+
+        for name, param in model.critic.named_parameters():
+            self.assertTrue(
+                torch.allclose(param.detach(), critic_before[name]),
+                msg=f"critic parameter {name} changed despite world-model failure",
+            )
 
     def test_target_value_consistency_anchors_to_replay_short_returns_when_teacher_imag_match(self):
         device = torch.device("cpu")

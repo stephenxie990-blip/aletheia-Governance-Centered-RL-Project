@@ -4692,6 +4692,117 @@ class TrainingStep:
                 metrics[f"critic/router_weight_mean_{idx}"] = float(value)
         return loss, metrics
 
+    def _run_world_model_update(
+        self,
+        *,
+        world_model: nn.Module,
+        wm_batch: Dict[str, Tensor],
+        cfg: Dict[str, Any],
+        detect_anomaly: bool,
+        zero_grad: bool,
+        optimizer_step: bool,
+        loss_scale: float,
+        post_solved_drift_damping_active: bool,
+        post_solved_wm_scale: float,
+    ) -> Dict[str, float]:
+        try:
+            with torch.autograd.set_detect_anomaly(detect_anomaly):
+                semantic_consistency_penalty, semantic_metrics = (
+                    self._compute_target_value_consistency_loss(
+                        wm_batch,
+                        cfg,
+                    )
+                )
+                policy_open_loop_consistency_penalty, policy_open_loop_metrics = (
+                    self._compute_policy_open_loop_consistency_loss(
+                        wm_batch,
+                        cfg,
+                    )
+                )
+                wm_out = world_model.observe_sequence(
+                    vitals=wm_batch["vitals"],
+                    actions=wm_batch["actions"],
+                    dones=wm_batch["dones"],
+                )
+                traj = world_model.build_trajectory(
+                    seq_result=wm_out,
+                    vitals=wm_batch["vitals"],
+                    actions=wm_batch["actions"],
+                    rewards=wm_batch["rewards"],
+                    dones=wm_batch["dones"],
+                    remaining_steps=wm_batch.get("remaining_steps"),
+                )
+                loss_packet = world_model.compute_loss(trajectory=traj)
+                base_loss_wm = getattr(loss_packet, "total", _get_zero_tensor(self.device))
+                loss_wm = (
+                    base_loss_wm
+                    + semantic_consistency_penalty
+                    + policy_open_loop_consistency_penalty
+                )
+                kl_mean = getattr(loss_packet, "metrics", {}).get(
+                    "kl_mean", _get_zero_tensor(self.device)
+                )
+                recon_error = getattr(loss_packet, "metrics", {}).get(
+                    "recon_error", _get_zero_tensor(self.device)
+                )
+
+                wm_grad_norm = 0.0
+                if zero_grad:
+                    self.opt.wm_optimizer.zero_grad()
+                scaled_wm_loss = loss_wm * loss_scale * post_solved_wm_scale
+                if isinstance(scaled_wm_loss, Tensor) and scaled_wm_loss.requires_grad:
+                    scaled_wm_loss.backward()
+                    if optimizer_step:
+                        wm_params = [
+                            p
+                            for g in self.opt.wm_optimizer.param_groups
+                            for p in g["params"]
+                            if p.grad is not None
+                        ]
+                        if wm_params:
+                            wm_grad_norm = torch.nn.utils.clip_grad_norm_(
+                                wm_params, self.opt.wm_grad_clip
+                            ).item()
+                        self.opt.wm_optimizer.step()
+                wm_metrics = {
+                    "loss_wm": loss_wm.item(),
+                    "wm/base_loss": base_loss_wm.item() if isinstance(base_loss_wm, Tensor) else float(base_loss_wm),
+                    "kl_mean": kl_mean.item() if isinstance(kl_mean, Tensor) else float(kl_mean),
+                    "recon_error": recon_error.item() if isinstance(recon_error, Tensor) else float(recon_error),
+                    "wm_grad_norm": wm_grad_norm,
+                    "wm/post_solved_drift_damping_active": float(post_solved_drift_damping_active),
+                    "wm/post_solved_scale": float(post_solved_wm_scale),
+                }
+                wm_metrics.update(semantic_metrics)
+                wm_metrics.update(policy_open_loop_metrics)
+                try:
+                    wm_metrics.update(loss_packet.to_metrics())
+                except Exception:
+                    pass
+                loss_packet_metrics = getattr(loss_packet, "metrics", {}) or {}
+                for source_key, target_key in (
+                    ("continue_prob_mean", "wm/continue_prob_mean"),
+                    ("continue_target_mean", "wm/continue_target_mean"),
+                    ("reward_pred_mean", "wm/reward_pred_mean"),
+                    ("reward_target_mean", "wm/reward_target_mean"),
+                ):
+                    value = loss_packet_metrics.get(source_key)
+                    if isinstance(value, Tensor):
+                        wm_metrics[target_key] = float(value.item())
+                    elif isinstance(value, (int, float)):
+                        wm_metrics[target_key] = float(value)
+                for source_key, value in loss_packet_metrics.items():
+                    if not str(source_key).startswith("bridge/"):
+                        continue
+                    target_key = f"wm/{source_key}"
+                    if isinstance(value, Tensor):
+                        wm_metrics[target_key] = float(value.item())
+                    elif isinstance(value, (int, float)):
+                        wm_metrics[target_key] = float(value)
+                return wm_metrics
+        except Exception as e:
+            raise RuntimeError(f"World-model update failed: {e}") from e
+
     # ── Validation ──────────────────────────────────────────────────────
 
     def _validate(self, batch: Dict[str, Tensor]) -> None:
@@ -4795,11 +4906,24 @@ class TrainingStep:
             returns = rl_batch["returns"]
             old_values = rl_batch.get("values")
 
-        # ── Phase 1: World-model update (once) ──────────────────────────
         wm_metrics: Dict[str, float] = {}
-        wm_grad_norm = 0.0
-
         world_model = getattr(self.model, "world_model", None)
+        if (
+            world_model is not None
+            and self.opt.wm_optimizer is not None
+            and wm_batch is not None
+        ):
+            wm_metrics = self._run_world_model_update(
+                world_model=world_model,
+                wm_batch=wm_batch,
+                cfg=cfg,
+                detect_anomaly=detect_anomaly,
+                zero_grad=zero_grad,
+                optimizer_step=optimizer_step,
+                loss_scale=loss_scale,
+                post_solved_drift_damping_active=post_solved_drift_damping_active,
+                post_solved_wm_scale=post_solved_wm_scale,
+            )
 
         # ── Phase 2: Actor-Critic Update ────────────────────────────────
         rl_accum: Dict[str, float] = {}
@@ -6797,168 +6921,6 @@ class TrainingStep:
                 "critic/value_error_mean": 0.0,
                 "critic/value_error_std": 0.0,
             }
-        if (
-            world_model is not None
-            and self.opt.wm_optimizer is not None
-            and wm_batch is not None
-        ):
-            try:
-                with torch.autograd.set_detect_anomaly(detect_anomaly):
-                    semantic_consistency_penalty, semantic_metrics = self._compute_target_value_consistency_loss(
-                        wm_batch,
-                        cfg,
-                    )
-                    policy_open_loop_consistency_penalty, policy_open_loop_metrics = (
-                        self._compute_policy_open_loop_consistency_loss(
-                            wm_batch,
-                            cfg,
-                        )
-                    )
-                    wm_out = world_model.observe_sequence(
-                        vitals=wm_batch["vitals"],
-                        actions=wm_batch["actions"],
-                        dones=wm_batch["dones"],
-                    )
-                    traj = world_model.build_trajectory(
-                        seq_result=wm_out,
-                        vitals=wm_batch["vitals"],
-                        actions=wm_batch["actions"],
-                        rewards=wm_batch["rewards"],
-                        dones=wm_batch["dones"],
-                        remaining_steps=wm_batch.get("remaining_steps"),
-                    )
-                    loss_packet = world_model.compute_loss(trajectory=traj)
-                    base_loss_wm = getattr(loss_packet, "total", _get_zero_tensor(self.device))
-                    loss_wm = (
-                        base_loss_wm
-                        + semantic_consistency_penalty
-                        + policy_open_loop_consistency_penalty
-                    )
-                    kl_mean = getattr(loss_packet, "metrics", {}).get(
-                        "kl_mean", _get_zero_tensor(self.device)
-                    )
-                    recon_error = getattr(loss_packet, "metrics", {}).get(
-                        "recon_error", _get_zero_tensor(self.device)
-                    )
-
-                    wm_grad_norm = 0.0
-                    if zero_grad:
-                        self.opt.wm_optimizer.zero_grad()
-                    scaled_wm_loss = loss_wm * loss_scale * post_solved_wm_scale
-                    if isinstance(scaled_wm_loss, Tensor) and scaled_wm_loss.requires_grad:
-                        scaled_wm_loss.backward()
-                        if optimizer_step:
-                            wm_params = [
-                                p
-                                for g in self.opt.wm_optimizer.param_groups
-                                for p in g["params"]
-                                if p.grad is not None
-                            ]
-                            if wm_params:
-                                wm_grad_norm = torch.nn.utils.clip_grad_norm_(
-                                    wm_params, self.opt.wm_grad_clip
-                                ).item()
-                            self.opt.wm_optimizer.step()
-                    wm_metrics = {
-                        "loss_wm": loss_wm.item(),
-                        "wm/base_loss": base_loss_wm.item() if isinstance(base_loss_wm, Tensor) else float(base_loss_wm),
-                        "kl_mean": kl_mean.item() if isinstance(kl_mean, Tensor) else float(kl_mean),
-                        "recon_error": recon_error.item() if isinstance(recon_error, Tensor) else float(recon_error),
-                        "wm_grad_norm": wm_grad_norm,
-                        "wm/post_solved_drift_damping_active": float(post_solved_drift_damping_active),
-                        "wm/post_solved_scale": float(post_solved_wm_scale),
-                    }
-                    wm_metrics.update(semantic_metrics)
-                    wm_metrics.update(policy_open_loop_metrics)
-                    try:
-                        wm_metrics.update(loss_packet.to_metrics())
-                    except Exception:
-                        pass
-                    loss_packet_metrics = getattr(loss_packet, "metrics", {}) or {}
-                    for source_key, target_key in (
-                        ("continue_prob_mean", "wm/continue_prob_mean"),
-                        ("continue_target_mean", "wm/continue_target_mean"),
-                        ("reward_pred_mean", "wm/reward_pred_mean"),
-                        ("reward_target_mean", "wm/reward_target_mean"),
-                    ):
-                        value = loss_packet_metrics.get(source_key)
-                        if isinstance(value, Tensor):
-                            wm_metrics[target_key] = float(value.item())
-                        elif isinstance(value, (int, float)):
-                            wm_metrics[target_key] = float(value)
-                    for source_key, value in loss_packet_metrics.items():
-                        if not str(source_key).startswith("bridge/"):
-                            continue
-                        target_key = f"wm/{source_key}"
-                        if isinstance(value, Tensor):
-                            wm_metrics[target_key] = float(value.item())
-                        elif isinstance(value, (int, float)):
-                            wm_metrics[target_key] = float(value)
-            except Exception as e:
-                logger.warning(f"World-model update failed: {e}")
-                wm_metrics = {
-                    "loss_wm": 0.0,
-                    "wm/base_loss": 0.0,
-                    "kl_mean": 0.0,
-                    "wm_grad_norm": 0.0,
-                    "wm/post_solved_drift_damping_active": float(post_solved_drift_damping_active),
-                    "wm/post_solved_scale": float(post_solved_wm_scale),
-                    "wm/semantic_consistency_active": 0.0,
-                    "wm/semantic_consistency_loss": 0.0,
-                    "wm/semantic_consistency_penalty": 0.0,
-                    "wm/semantic_consistency_weight": float(
-                        cfg.get("adaptive_imag_target_value_consistency_weight", 0.0)
-                    ),
-                    "wm/semantic_consistency_horizon": 0.0,
-                    "wm/semantic_consistency_context_len": 0.0,
-                    "wm/semantic_consistency_value_gap_mean": 0.0,
-                    "wm/semantic_consistency_teacher_value_mean": 0.0,
-                    "wm/semantic_consistency_imag_value_mean": 0.0,
-                    "wm/semantic_consistency_target_mean": 0.0,
-                    "wm/semantic_consistency_teacher_to_real_gap_mean": 0.0,
-                    "wm/semantic_consistency_imag_to_real_gap_mean": 0.0,
-                    "wm/semantic_consistency_teacher_imag_gap_mean": 0.0,
-                    "wm/semantic_consistency_target_source_replay": 0.0,
-                    "wm/semantic_consistency_uses_target_critic": 0.0,
-                    "wm/semantic_consistency_high_value_boost": 0.0,
-                    "wm/semantic_consistency_high_value_quantile": 0.0,
-                    "wm/semantic_consistency_high_value_fraction_mean": 0.0,
-                    "wm/semantic_consistency_high_value_weight_mean": 1.0,
-                    "wm/semantic_consistency_high_value_threshold_mean": 0.0,
-                    "wm/semantic_consistency_high_value_feature_scale": 0.0,
-                    "wm/semantic_consistency_high_value_feature_loss_mean": 0.0,
-                    "wm/policy_open_loop_consistency_active": 0.0,
-                    "wm/policy_open_loop_consistency_loss": 0.0,
-                    "wm/policy_open_loop_consistency_penalty": 0.0,
-                    "wm/policy_open_loop_consistency_weight": float(
-                        cfg.get("adaptive_imag_policy_open_loop_consistency_weight", 0.0)
-                    ),
-                    "wm/policy_open_loop_consistency_horizon": 0.0,
-                    "wm/policy_open_loop_consistency_context_len": 0.0,
-                    "wm/policy_open_loop_consistency_feature_l1_mean": 0.0,
-                    "wm/policy_open_loop_consistency_feature_l2_mean": 0.0,
-                    "wm/policy_open_loop_consistency_cosine_gap_mean": 0.0,
-                    "wm/policy_open_loop_consistency_teacher_value_mean": 0.0,
-                    "wm/policy_open_loop_consistency_target_mean": 0.0,
-                    "wm/policy_open_loop_consistency_target_source_replay": 0.0,
-                    "wm/policy_open_loop_consistency_uses_target_critic": 0.0,
-                    "wm/policy_open_loop_consistency_high_value_boost": 0.0,
-                    "wm/policy_open_loop_consistency_high_value_quantile": 0.0,
-                    "wm/policy_open_loop_consistency_high_value_fraction_mean": 0.0,
-                    "wm/policy_open_loop_consistency_high_value_weight_mean": 1.0,
-                    "wm/policy_open_loop_consistency_high_value_threshold_mean": 0.0,
-                    "wm/policy_open_loop_consistency_value_scale": float(
-                        cfg.get("adaptive_imag_policy_open_loop_consistency_value_scale", 0.0)
-                    ),
-                    "wm/policy_open_loop_consistency_value_loss_mean": 0.0,
-                    "wm/policy_open_loop_consistency_teacher_value_gap_mean": 0.0,
-                    "wm/policy_open_loop_consistency_imag_target_gap_mean": 0.0,
-                    "wm/policy_open_loop_consistency_late_step_boost": float(
-                        cfg.get("adaptive_imag_policy_open_loop_consistency_late_step_boost", 0.0)
-                    ),
-                    "wm/policy_open_loop_consistency_step_weight_mean": 1.0,
-                }
-
         rl_accum.update(wm_metrics)
         rl_accum["train/source"] = source_tag
         rl_accum["train/optimizer_step"] = 1.0 if optimizer_step else 0.0
