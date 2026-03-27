@@ -4653,8 +4653,6 @@ class TrainingStep:
             signature = inspect.signature(compute_loss)
         except (TypeError, ValueError):
             signature = None
-        if signature is not None and "include_router_loss" in signature.parameters:
-            call_kwargs["include_router_loss"] = False
 
         result = compute_loss(**call_kwargs)
         if not isinstance(result, dict) or "loss" not in result:

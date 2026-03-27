@@ -168,6 +168,49 @@ class _RecordingCritic(nn.Module):
         }
 
 
+class _RouterAwareRecordingCritic(_RecordingCritic):
+    def __init__(self, feat_dim: int, fixed_loss: float = 3.25, router_loss: float = 0.75):
+        super().__init__(feat_dim=feat_dim, fixed_loss=fixed_loss)
+        self.router_loss = float(router_loss)
+        self.last_include_router_loss = None
+
+    def compute_loss(
+        self,
+        feat,
+        targets,
+        intent=None,
+        weights=None,
+        include_router_loss: bool = True,
+        detach_features: bool = False,
+    ):
+        del intent, weights
+        self.compute_loss_calls += 1
+        self.last_detach_features = bool(detach_features)
+        self.last_targets = targets
+        self.last_include_router_loss = bool(include_router_loss)
+        anchor = self.v(feat.reshape(-1, feat.shape[-1])).mean() * 0.0
+        core_loss = anchor + self.fixed_loss
+        result = {
+            "loss": core_loss,
+            "loss_critic": core_loss.detach(),
+            "per_gamma": {self.primary_gamma: core_loss.detach()},
+        }
+        if include_router_loss:
+            router_loss = anchor + self.router_loss
+            result.update(
+                {
+                    "loss": core_loss + router_loss,
+                    "loss_router": router_loss.detach(),
+                    "L_route": torch.tensor(0.2, device=feat.device),
+                    "L_lb": torch.tensor(0.1, device=feat.device),
+                    "L_ent": torch.tensor(0.05, device=feat.device),
+                    "H_gamma": torch.tensor(0.4, device=feat.device),
+                    "w_gamma_mean": torch.tensor([0.3, 0.7], device=feat.device),
+                }
+            )
+        return result
+
+
 class _DummyModelPrecomputedDrift(nn.Module):
     def __init__(self, vital_dim: int, action_dim: int, device: torch.device, target_shift: float = 5.0):
         super().__init__()
@@ -190,6 +233,22 @@ class _DummyModelRecordingCritic(nn.Module):
         self.world_model = _DummyWorldModel(device)
         self.actor = SimpleNamespace(is_discrete=False)
         self.critic = _RecordingCritic(vital_dim)
+
+    def forward(self, vitals, temperature: float = 1.0, intent=None):
+        del temperature, intent
+        mu = self.fc(vitals)
+        dist = D.Normal(mu, torch.ones_like(mu))
+        value = self.critic(vitals)
+        return dist, value
+
+
+class _DummyModelRouterCritic(nn.Module):
+    def __init__(self, vital_dim: int, action_dim: int, device: torch.device):
+        super().__init__()
+        self.fc = nn.Linear(vital_dim, action_dim)
+        self.world_model = _DummyWorldModel(device)
+        self.actor = SimpleNamespace(is_discrete=False)
+        self.critic = _RouterAwareRecordingCritic(vital_dim)
 
     def forward(self, vitals, temperature: float = 1.0, intent=None):
         del temperature, intent
@@ -1225,6 +1284,48 @@ class TestTrainingEntryPoints(unittest.TestCase):
         self.assertIsInstance(model.critic.last_targets, dict)
         self.assertIn(model.critic.primary_gamma, model.critic.last_targets)
         self.assertAlmostEqual(float(metrics["loss_critic"]), model.critic.fixed_loss, places=6)
+
+    def test_training_step_keeps_router_loss_enabled_when_critic_supports_it(self):
+        device = torch.device("cpu")
+        config = TrainingConfig()
+        config.rl.use_value_normalization = False
+        config.rl.detach_critic_features_on_imagination = True
+
+        model = _DummyModelRouterCritic(4, 2, device).to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        stepper = TrainingStep(model=model, opt_bundle=_single_rl_opt_bundle(optimizer), config=config, device=device)
+
+        torch.manual_seed(11)
+        B, T, D, A = 2, 3, 4, 2
+        policy_features = torch.randn(B, T, D, device=device)
+        batch = {
+            "vitals": policy_features,
+            "policy_features": policy_features,
+            "use_precomputed_policy_outputs": True,
+            "actions": torch.randn(B, T, A, device=device),
+            "rewards": torch.randn(B, T, device=device),
+            "dones": torch.zeros(B, T, device=device),
+            "log_probs": torch.zeros(B, T, device=device),
+            "entropy": torch.zeros(B, T, device=device),
+            "advantages": torch.zeros(B, T, device=device),
+            "returns": torch.ones(B, T, device=device),
+            "target_actor": torch.ones(B, T, device=device),
+            "base_actor": torch.zeros(B, T, device=device),
+            "weights_actor": torch.ones(B, T, device=device),
+        }
+
+        metrics = stepper.run_step(batch=batch, rl_batch=batch, wm_batch=batch, source_tag="imag")
+
+        self.assertEqual(model.critic.compute_loss_calls, 1)
+        self.assertTrue(bool(model.critic.last_include_router_loss))
+        self.assertAlmostEqual(
+            float(metrics["critic/loss_contract_router"]),
+            model.critic.router_loss,
+            places=6,
+        )
+        self.assertAlmostEqual(float(metrics["critic/router_route"]), 0.2, places=6)
+        self.assertAlmostEqual(float(metrics["critic/router_load_balance"]), 0.1, places=6)
+        self.assertAlmostEqual(float(metrics["critic/router_entropy"]), 0.05, places=6)
 
     def test_actor_drift_guard_and_slow_reg_scale_activate_on_large_gap(self):
         device = torch.device("cpu")
