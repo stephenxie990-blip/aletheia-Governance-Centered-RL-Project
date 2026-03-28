@@ -1514,6 +1514,69 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertTrue(train_calls[0]["skip_rl"])
         self.assertEqual(train_calls[0]["wm_batch"], {"wm": True})
 
+    def test_training_loop_run_stops_cleanly_when_env_budget_exhausts_after_progress(self):
+        collect_calls = []
+        train_calls = []
+        loop = SimpleNamespace()
+        loop.config = SimpleNamespace(
+            total_steps=2,
+            num_train_steps=2,
+            total_env_steps=1,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+            imagination_only=False,
+        )
+        loop.device = torch.device("cpu")
+        loop.global_step = 0
+        loop.episode_count = 0
+        loop.env_steps_collected = 0
+        loop._steps_since_collect = 0
+        loop.train_steps_per_cycle = 1
+        loop.collect_steps_per_cycle = 1
+        loop.model = object()
+        loop.imagination_engine = object()
+        loop.logger_fn = lambda metrics, step=0: None
+        loop._should_collect = lambda: True
+        loop._sync_episode_counts = lambda collector: None
+        loop._build_real_batch = lambda: {"real": True}
+        loop._build_imagined_batch = lambda reference_real_batch=None: None
+        loop._build_wm_batch = lambda: {"wm": True}
+        loop._select_rl_batch = lambda real_batch, imag_batch: (real_batch, "real", 0.0)
+        loop.should_log = lambda: False
+        loop.should_eval = lambda: False
+        loop.should_save = lambda: False
+
+        def fake_add_to_buffer(result):
+            loop.env_steps_collected += int(result["actions"].shape[0])
+
+        def fake_train_step(**kwargs):
+            train_calls.append(kwargs)
+            loop.global_step += 1
+            return {"loss_actor": 0.0}
+
+        loop._add_to_buffer = fake_add_to_buffer
+        loop.train_step = fake_train_step
+
+        def fake_collect(num_steps):
+            collect_calls.append(num_steps)
+            return {
+                "observations": np.zeros((num_steps + 1, 1), dtype=np.float32),
+                "next_observations": np.zeros((num_steps, 1), dtype=np.float32),
+                "actions": np.zeros((num_steps, 1), dtype=np.float32),
+                "rewards": np.zeros((num_steps,), dtype=np.float32),
+                "dones": np.zeros((num_steps,), dtype=np.float32),
+                "terminated": np.zeros((num_steps,), dtype=np.float32),
+                "truncated": np.zeros((num_steps,), dtype=np.float32),
+                "log_probs": np.zeros((num_steps,), dtype=np.float32),
+            }
+
+        collector = SimpleNamespace(episode_returns=[], collect=fake_collect)
+        train_mod.TrainingLoop.run(loop, num_steps=2, data_collector=collector)
+
+        self.assertEqual(collect_calls, [1])
+        self.assertEqual(len(train_calls), 1)
+        self.assertEqual(loop.global_step, 1)
+
     def test_training_config_strict_allows_distinct_env_step_budget(self):
         cfg = TrainingConfig(
             config_mode="strict",

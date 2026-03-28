@@ -21379,7 +21379,15 @@ class TrainingLoop:
         while self.global_step < num_steps:
             # ── Phase 1: Collect data (only when due) ───────────────────
             if data_collector is not None and self._should_collect():
-                _collect_with_data_collector(fail_on_budget_exhausted=True)
+                if not _collect_with_data_collector(
+                    fail_on_budget_exhausted=(self.global_step <= 0)
+                ):
+                    logger.info(
+                        "Target env-step budget exhausted at update step %d after collecting %d env steps; stopping early",
+                        int(self.global_step),
+                        int(self.env_steps_collected),
+                    )
+                    break
             elif data_collector is None:
                 self._sync_episode_counts(None)
 
