@@ -3168,6 +3168,35 @@ def _get_git_commit(project_root: Path) -> Optional[str]:
     return content or None
 
 
+def _resolve_training_budgets(
+    *,
+    steps: int,
+    update_steps: Optional[int],
+    collect_steps_per_cycle: int,
+    train_steps_per_cycle: int,
+) -> Tuple[int, int]:
+    collector_steps = max(1, int(collect_steps_per_cycle))
+    updates_per_cycle = max(1, int(train_steps_per_cycle))
+
+    if update_steps is not None and int(update_steps) > 0:
+        total_updates = int(update_steps)
+        collect_cycles = max(
+            1,
+            int(math.ceil(float(total_updates) / float(updates_per_cycle))),
+        )
+        expected_env_steps = int(collect_cycles * collector_steps)
+        return int(total_updates), int(expected_env_steps)
+
+    requested_env_steps = max(1, int(steps))
+    collect_cycles = max(
+        1,
+        int(math.ceil(float(requested_env_steps) / float(collector_steps))),
+    )
+    total_updates = int(collect_cycles * updates_per_cycle)
+    expected_env_steps = int(requested_env_steps)
+    return int(total_updates), int(expected_env_steps)
+
+
 def run_train(
     args: Any,
     input_spec: Optional[Dict[str, Any]] = None,
@@ -3410,18 +3439,12 @@ def run_train(
     train_steps_per_cycle = max(1, int(getattr(args, "train_steps_per_cycle", 4)))
     from .aletheia_config import TrainingConfig
 
-    if getattr(args, "update_steps", None) is not None and int(getattr(args, "update_steps")) > 0:
-        total_updates = int(getattr(args, "update_steps"))
-    else:
-        total_updates = max(
-            1,
-            int(
-                np.ceil(
-                    float(getattr(args, "steps", DEFAULT_STEPS)) / float(collector_steps)
-                )
-            ),
-        )
-    expected_env_steps = int(total_updates * collector_steps)
+    total_updates, expected_env_steps = _resolve_training_budgets(
+        steps=int(getattr(args, "steps", DEFAULT_STEPS)),
+        update_steps=getattr(args, "update_steps", None),
+        collect_steps_per_cycle=collector_steps,
+        train_steps_per_cycle=train_steps_per_cycle,
+    )
 
     wm_pretrain = int(total_updates * float(getattr(args, "pretrain_ratio", PRETRAIN_RATIO)))
     warmup = int(total_updates * float(getattr(args, "warmup_ratio", WARMUP_RATIO)))
@@ -4408,7 +4431,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     )
 
     parser.add_argument("--env", type=str, default=DEFAULT_ENV, help="Environment ID")
-    parser.add_argument("--steps", type=int, default=10_000, help="Training steps")
+    parser.add_argument("--steps", type=int, default=10_000, help="Target environment steps")
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="Random seed")
     parser.add_argument("--device", type=str, default="auto", help="Device")
     parser.add_argument("--eval-only", action="store_true", help="Evaluation mode only")

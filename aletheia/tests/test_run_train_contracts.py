@@ -829,6 +829,65 @@ class TestRunTrainContracts(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Data collector returned None"):
             train_mod.TrainingLoop.run(loop, num_steps=1, data_collector=_NullCollector())
 
+    def test_training_loop_run_limits_final_collection_to_remaining_env_steps(self):
+        collect_requests = []
+        loop = SimpleNamespace()
+        loop.config = SimpleNamespace(
+            total_steps=4,
+            num_train_steps=4,
+            total_env_steps=5,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+            imagination_only=False,
+        )
+        loop.device = torch.device("cpu")
+        loop.global_step = 0
+        loop.episode_count = 0
+        loop.env_steps_collected = 0
+        loop._steps_since_collect = 2
+        loop.train_steps_per_cycle = 2
+        loop.collect_steps_per_cycle = 3
+        loop.model = object()
+        loop.imagination_engine = object()
+        loop.logger_fn = lambda metrics, step=0: None
+        loop._should_collect = lambda: loop._steps_since_collect >= loop.train_steps_per_cycle
+        loop._add_to_buffer = lambda result: setattr(
+            loop,
+            "env_steps_collected",
+            int(loop.env_steps_collected) + int(len(result["actions"])),
+        )
+        loop._sync_episode_counts = lambda collector: None
+        loop._build_real_batch = lambda: {"real": True}
+        loop._build_imagined_batch = lambda reference_real_batch=None: {"imag": True}
+        loop._build_wm_batch = lambda: {"wm": True}
+        loop._select_rl_batch = lambda real_batch, imag_batch: (real_batch, "real", 0.0)
+        loop.should_log = lambda: False
+        loop.should_eval = lambda: False
+        loop.should_save = lambda: False
+
+        def train_step(**kwargs):
+            del kwargs
+            loop.global_step += 1
+            return {"loss_actor": 0.0}
+
+        loop.train_step = train_step
+
+        class _Collector:
+            episode_returns = []
+
+            def collect(self, num_steps, deterministic=False):
+                del deterministic
+                collect_requests.append(int(num_steps))
+                return {
+                    "actions": np.zeros((int(num_steps), 1), dtype=np.float32),
+                }
+
+        train_mod.TrainingLoop.run(loop, num_steps=4, data_collector=_Collector())
+
+        self.assertEqual(collect_requests, [3, 2])
+        self.assertEqual(loop.global_step, 4)
+        self.assertEqual(loop.env_steps_collected, 5)
+
     def test_training_loop_run_rejects_imagination_only_without_engine(self):
         loop = SimpleNamespace()
         loop.config = SimpleNamespace(
@@ -1405,6 +1464,148 @@ class TestRunTrainContracts(unittest.TestCase):
             self.assertAlmostEqual(float(eval_records[0]["mean_reward"]), 123.0, places=6)
             self.assertAlmostEqual(float(eval_records[0]["eval_reward"]), 123.0, places=6)
             self.assertAlmostEqual(float(eval_records[0]["current_checkpoint_reward"]), 123.0, places=6)
+
+    def test_run_train_maps_env_step_budget_to_full_update_cycles(self):
+        agent = _DummyAgent()
+        train_env = _CountingEnv(done_after=2)
+        eval_env = _CountingEnv(done_after=2)
+
+        def fake_create_agent(env, config_overrides=None, device=None, seed=None):
+            del env, config_overrides, device, seed
+            return agent
+
+        def fake_create_replay_buffer(capacity, store_obs=False):
+            del store_obs
+            return _DummyBuffer(capacity=capacity)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = SimpleNamespace(
+                env="Dummy-v0",
+                device="cpu",
+                seed=7,
+                render=False,
+                verbose=False,
+                load=None,
+                save=tmpdir,
+                resume_from=None,
+                steps=3500,
+                update_steps=None,
+                collect_steps_per_cycle=32,
+                train_steps_per_cycle=4,
+                wm_seq_len=1,
+                wm_batch_size=1,
+                imagination_horizon=3,
+                imagination_batch_size=1,
+                rl_batch_size=1,
+                buffer_capacity=8,
+                pretrain_ratio=0.0,
+                warmup_ratio=0.0,
+                imagination_only=False,
+                imag_ratio_start=0.0,
+                imag_ratio_end=0.0,
+                imag_ratio_max=0.0,
+                imag_ratio_ramp_steps=1,
+                imag_gradient="dynamics",
+                imag_gradient_mix=0.0,
+                actor_analytic_weight=1.0,
+                actor_reinforce_aux_weight_discrete=0.1,
+                use_reward_ema=True,
+                log_interval=1000,
+                eval_interval=0,
+                save_interval=0,
+                eval_episodes=2,
+                eval_max_steps=5,
+                eval_only=False,
+                enable_eval=False,
+                overrides=None,
+                argv=["scripts/cartpole_train.py", "--steps", "3500"],
+            )
+            with mock.patch.object(api, "create_agent", side_effect=fake_create_agent), \
+                 mock.patch.object(api, "create_agent_rollout_collector", return_value=object()), \
+                 mock.patch.object(train_mod, "TrainingLoop", _FakeTrainingLoop), \
+                 mock.patch.object(train_mod, "create_replay_buffer", side_effect=fake_create_replay_buffer):
+                result = api.run_train(
+                    args,
+                    input_spec={"env": train_env, "eval_env": eval_env},
+                )
+
+        self.assertEqual(result["status"], 0)
+        cfg = _FakeTrainingLoop.last_instance.kwargs["config"]
+        self.assertEqual(int(cfg.total_steps), 440)
+        self.assertEqual(int(cfg.num_train_steps), 440)
+        self.assertEqual(int(cfg.total_env_steps), 3500)
+        self.assertEqual(int(_FakeTrainingLoop.last_instance.global_step), 440)
+
+    def test_run_train_derives_expected_env_steps_from_update_budget_and_cycle_ratio(self):
+        agent = _DummyAgent()
+        train_env = _CountingEnv(done_after=2)
+        eval_env = _CountingEnv(done_after=2)
+
+        def fake_create_agent(env, config_overrides=None, device=None, seed=None):
+            del env, config_overrides, device, seed
+            return agent
+
+        def fake_create_replay_buffer(capacity, store_obs=False):
+            del store_obs
+            return _DummyBuffer(capacity=capacity)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = SimpleNamespace(
+                env="Dummy-v0",
+                device="cpu",
+                seed=7,
+                render=False,
+                verbose=False,
+                load=None,
+                save=tmpdir,
+                resume_from=None,
+                steps=999,
+                update_steps=10,
+                collect_steps_per_cycle=32,
+                train_steps_per_cycle=4,
+                wm_seq_len=1,
+                wm_batch_size=1,
+                imagination_horizon=3,
+                imagination_batch_size=1,
+                rl_batch_size=1,
+                buffer_capacity=8,
+                pretrain_ratio=0.0,
+                warmup_ratio=0.0,
+                imagination_only=False,
+                imag_ratio_start=0.0,
+                imag_ratio_end=0.0,
+                imag_ratio_max=0.0,
+                imag_ratio_ramp_steps=1,
+                imag_gradient="dynamics",
+                imag_gradient_mix=0.0,
+                actor_analytic_weight=1.0,
+                actor_reinforce_aux_weight_discrete=0.1,
+                use_reward_ema=True,
+                log_interval=1000,
+                eval_interval=0,
+                save_interval=0,
+                eval_episodes=2,
+                eval_max_steps=5,
+                eval_only=False,
+                enable_eval=False,
+                overrides=None,
+                argv=["scripts/cartpole_train.py", "--update-steps", "10"],
+            )
+            with mock.patch.object(api, "create_agent", side_effect=fake_create_agent), \
+                 mock.patch.object(api, "create_agent_rollout_collector", return_value=object()), \
+                 mock.patch.object(train_mod, "TrainingLoop", _FakeTrainingLoop), \
+                 mock.patch.object(train_mod, "create_replay_buffer", side_effect=fake_create_replay_buffer):
+                result = api.run_train(
+                    args,
+                    input_spec={"env": train_env, "eval_env": eval_env},
+                )
+
+        self.assertEqual(result["status"], 0)
+        cfg = _FakeTrainingLoop.last_instance.kwargs["config"]
+        self.assertEqual(int(cfg.total_steps), 10)
+        self.assertEqual(int(cfg.num_train_steps), 10)
+        self.assertEqual(int(cfg.total_env_steps), 96)
+        self.assertEqual(int(_FakeTrainingLoop.last_instance.global_step), 10)
 
     def test_run_train_rejects_resume_metadata_preload_failures(self):
         agent = _DummyAgent()

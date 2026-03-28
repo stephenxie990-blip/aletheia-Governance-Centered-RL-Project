@@ -20820,8 +20820,17 @@ class TrainingLoop:
         while self.global_step < num_steps:
             # ── Phase 1: Collect data (only when due) ───────────────────
             if data_collector is not None and self._should_collect():
+                collect_num_steps = int(self.collect_steps_per_cycle)
+                target_env_steps = int(getattr(self.config, "total_env_steps", 0) or 0)
+                if target_env_steps > 0:
+                    remaining_env_steps = target_env_steps - int(self.env_steps_collected)
+                    if remaining_env_steps <= 0:
+                        raise RuntimeError(
+                            "Target env-step budget exhausted before reaching target update budget"
+                        )
+                    collect_num_steps = min(collect_num_steps, int(remaining_env_steps))
                 result = data_collector.collect(
-                    num_steps=self.collect_steps_per_cycle
+                    num_steps=collect_num_steps
                 )
                 if result is None:
                     raise RuntimeError(

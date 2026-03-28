@@ -36,6 +36,29 @@ class CartpoleTrainScriptTests(unittest.TestCase):
             "exp_seed42_v214_phase4_final_effective_contact_surface_2500_20260318_164530",
         )
 
+    def test_build_default_save_dir_uses_env_step_budget_when_update_steps_not_set(self):
+        args = SimpleNamespace(
+            save=None,
+            eval_only=False,
+            seed=7,
+            env="Pendulum-v1",
+            overrides=None,
+            update_steps=None,
+            collect_steps_per_cycle=32,
+            train_steps_per_cycle=4,
+            steps=3500,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            save_dir = cartpole_train._build_default_save_dir(
+                args,
+                root=Path(tmpdir),
+                now=datetime(2026, 3, 28, 13, 0, 0),
+            )
+        self.assertEqual(
+            save_dir.name,
+            "exp_seed7_Pendulum-v1_env3500_20260328_130000",
+        )
+
     def test_apply_default_save_dir_skips_eval_only_and_explicit_save(self):
         args_eval_only = SimpleNamespace(
             save=None,

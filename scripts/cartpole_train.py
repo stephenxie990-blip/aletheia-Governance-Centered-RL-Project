@@ -6,7 +6,6 @@ Aletheia CartPole 训练脚本（薄壳）
 from __future__ import annotations
 
 import argparse
-import math
 import os
 import re
 import sys
@@ -135,12 +134,11 @@ def _sanitize_run_label(raw: str) -> str:
     return text or "cartpole_train"
 
 
-def _infer_total_updates(args: Any) -> int:
+def _budget_token(args: Any) -> str:
     if getattr(args, "update_steps", None):
-        return max(1, int(args.update_steps))
-    collect_steps = max(1, int(getattr(args, "collect_steps_per_cycle", 32)))
+        return str(max(1, int(args.update_steps)))
     steps = max(1, int(getattr(args, "steps", 80000)))
-    return max(1, int(math.ceil(float(steps) / float(collect_steps))))
+    return f"env{steps}"
 
 
 def _build_default_save_dir(
@@ -155,8 +153,8 @@ def _build_default_save_dir(
     label_source = getattr(args, "overrides", None) or getattr(args, "env", "cartpole_train")
     label = _sanitize_run_label(str(label_source))
     seed = int(getattr(args, "seed", 42))
-    total_updates = _infer_total_updates(args)
-    base_name = f"exp_seed{seed}_{label}_{total_updates}_{timestamp}"
+    budget_token = _budget_token(args)
+    base_name = f"exp_seed{seed}_{label}_{budget_token}_{timestamp}"
     candidate = outputs_root / base_name
     suffix = 1
     while candidate.exists():
