@@ -1035,7 +1035,103 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertEqual(loop.env_steps_collected, 6)
         self.assertEqual(loop._steps_since_collect, 4)
 
-    def test_training_loop_run_resume_infers_collect_phase_for_legacy_checkpoints(self):
+    def test_training_loop_run_resume_rejects_legacy_collect_phase_metadata_by_default(self):
+        collect_requests = []
+        loop = SimpleNamespace()
+        loop.config = SimpleNamespace(
+            total_steps=8,
+            num_train_steps=8,
+            total_env_steps=6,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+            imagination_only=False,
+        )
+        loop.device = torch.device("cpu")
+        loop.global_step = 0
+        loop.episode_count = 0
+        loop.env_steps_collected = 0
+        loop._steps_since_collect = 0
+        loop.train_steps_per_cycle = 4
+        loop.collect_steps_per_cycle = 3
+        loop.model = object()
+        loop.opt_bundle = None
+        loop.buffer = None
+        loop.imagination_engine = object()
+        loop._episode_return_ema = 0.0
+        loop._episode_return_initialized = False
+        loop._last_episode_count = 0
+        loop._last_return_episode_count = 0
+        loop._last_seen_episode_idx = -1
+        loop._restore_adaptive_compensation_state = lambda *args, **kwargs: None
+        loop.logger_fn = lambda metrics, step=0: None
+        loop._should_collect = lambda: loop._steps_since_collect >= loop.train_steps_per_cycle
+        loop._add_to_buffer = lambda result: setattr(
+            loop,
+            "env_steps_collected",
+            int(loop.env_steps_collected) + int(len(result["actions"])),
+        )
+        loop._sync_episode_counts = lambda collector: None
+        loop._build_real_batch = lambda: {"real": True}
+        loop._build_imagined_batch = lambda reference_real_batch=None: {"imag": True}
+        loop._build_wm_batch = lambda: {"wm": True}
+        loop._select_rl_batch = lambda real_batch, imag_batch: (real_batch, "real", 0.0)
+        loop.should_log = lambda: False
+        loop.should_eval = lambda: False
+        loop.should_save = lambda: False
+
+        def train_step(**kwargs):
+            del kwargs
+            loop.global_step += 1
+            return {"loss_actor": 0.0}
+
+        loop.train_step = train_step
+
+        class _Collector:
+            episode_returns = []
+
+            def collect(self, num_steps, deterministic=False):
+                del deterministic
+                collect_requests.append(int(num_steps))
+                return {
+                    "actions": np.zeros((int(num_steps), 1), dtype=np.float32),
+                }
+
+        legacy_state = SimpleNamespace(
+            global_step=5,
+            episode_count=0,
+            total_samples=6,
+            episode_return_ema=0.0,
+            episode_return_initialized=False,
+            last_episode_count=0,
+            last_return_episode_count=0,
+            last_seen_episode_idx=-1,
+            adaptive_compensation_state={},
+            best_step=0,
+            best_eval_return=-float("inf"),
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            resume_path = Path(tmpdir) / "resume.pt"
+            resume_path.write_text("resume", encoding="utf-8")
+            with mock.patch.object(
+                train_mod.TrainingStateManager,
+                "load",
+                return_value=legacy_state,
+            ):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "Resume checkpoint missing collect-phase metadata",
+                ):
+                    train_mod.TrainingLoop.run(
+                        loop,
+                        num_steps=8,
+                        data_collector=_Collector(),
+                        resume_from=str(resume_path),
+                    )
+
+        self.assertEqual(collect_requests, [])
+
+    def test_training_loop_run_can_infer_legacy_collect_phase_metadata_with_explicit_policy(self):
         collect_requests = []
         loop = SimpleNamespace()
         loop.config = SimpleNamespace(
@@ -1123,6 +1219,9 @@ class TestRunTrainContracts(unittest.TestCase):
                     num_steps=8,
                     data_collector=_Collector(),
                     resume_from=str(resume_path),
+                    resume_restore_policy=TrainingCheckpointRestorePolicy(
+                        legacy_steps_since_collect_mode="infer"
+                    ),
                 )
 
         self.assertEqual(collect_requests, [])
@@ -5535,6 +5634,15 @@ class TestRunTrainContracts(unittest.TestCase):
                 optimizer_restore_mode="compatible",
             ).normalized()
 
+    def test_training_checkpoint_restore_policy_rejects_invalid_legacy_steps_since_collect_mode(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "legacy_steps_since_collect_mode must be one of",
+        ):
+            TrainingCheckpointRestorePolicy(
+                legacy_steps_since_collect_mode="compat",
+            ).normalized()
+
     def test_main_rejects_compatible_resume_optimizer_restore_mode(self):
         with self.assertRaises(SystemExit) as exc:
             api.main([
@@ -6724,6 +6832,8 @@ class TestRunTrainContracts(unittest.TestCase):
                 "strict",
                 "--resume-optimizer-restore-mode",
                 "skip",
+                "--resume-legacy-steps-since-collect-mode",
+                "infer",
                 "--resume-restore-layers",
                 "model,buffer",
             ])
@@ -6735,6 +6845,7 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertEqual(parsed_args.resume_from, "resume.pt")
         self.assertEqual(parsed_args.resume_model_restore_mode, "strict")
         self.assertEqual(parsed_args.resume_optimizer_restore_mode, "skip")
+        self.assertEqual(parsed_args.resume_legacy_steps_since_collect_mode, "infer")
         self.assertEqual(parsed_args.resume_restore_layers, "model,buffer")
 
     def test_main_rejects_compatible_resume_model_restore_mode(self):

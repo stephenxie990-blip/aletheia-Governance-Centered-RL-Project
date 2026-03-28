@@ -13,6 +13,7 @@ from ._checkpoint_schema_primitives import (
 logger = logging.getLogger("aletheia.training_checkpoint_schema")
 _VALID_OPTIMIZER_RESTORE_MODES = {"auto", "strict", "skip"}
 _VALID_MODEL_RESTORE_MODES = {"strict"}
+_VALID_LEGACY_STEPS_SINCE_COLLECT_MODES = {"strict", "infer"}
 
 
 @dataclass(frozen=True)
@@ -23,10 +24,14 @@ class TrainingCheckpointRestorePolicy:
     restore_buffer: bool = True
     model_restore_mode: str = "strict"
     optimizer_restore_mode: str = "auto"
+    legacy_steps_since_collect_mode: str = "strict"
 
     def normalized(self) -> "TrainingCheckpointRestorePolicy":
         model_mode = str(self.model_restore_mode or "strict").strip().lower()
         mode = str(self.optimizer_restore_mode or "auto").strip().lower()
+        legacy_mode = str(
+            self.legacy_steps_since_collect_mode or "strict"
+        ).strip().lower()
         if model_mode not in _VALID_MODEL_RESTORE_MODES:
             raise ValueError(
                 "model_restore_mode must be one of "
@@ -37,6 +42,11 @@ class TrainingCheckpointRestorePolicy:
                 "optimizer_restore_mode must be one of "
                 f"{sorted(_VALID_OPTIMIZER_RESTORE_MODES)}."
             )
+        if legacy_mode not in _VALID_LEGACY_STEPS_SINCE_COLLECT_MODES:
+            raise ValueError(
+                "legacy_steps_since_collect_mode must be one of "
+                f"{sorted(_VALID_LEGACY_STEPS_SINCE_COLLECT_MODES)}."
+            )
         return TrainingCheckpointRestorePolicy(
             restore_training_state=bool(self.restore_training_state),
             restore_model=bool(self.restore_model),
@@ -44,6 +54,7 @@ class TrainingCheckpointRestorePolicy:
             restore_buffer=bool(self.restore_buffer),
             model_restore_mode=model_mode,
             optimizer_restore_mode=mode,
+            legacy_steps_since_collect_mode=legacy_mode,
         )
 
 

@@ -4254,6 +4254,10 @@ def run_train(
             optimizer_restore_mode=str(
                 getattr(args, "resume_optimizer_restore_mode", "auto") or "auto"
             ).strip().lower(),
+            legacy_steps_since_collect_mode=str(
+                getattr(args, "resume_legacy_steps_since_collect_mode", "strict")
+                or "strict"
+            ).strip().lower(),
         )
 
     resume_restore_policy = _build_resume_restore_policy()
@@ -4488,6 +4492,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         type=str,
         default="all",
         help="Comma-separated resume layers: training_state,model,optimizers,buffer; use all or none",
+    )
+    parser.add_argument(
+        "--resume-legacy-steps-since-collect-mode",
+        type=str,
+        default="strict",
+        choices=["strict", "infer"],
+        help="How trainer-state resume handles legacy checkpoints missing steps_since_collect metadata",
     )
     parser.add_argument("--enable-eval", action="store_true", help="Enable evaluation during training")
     parser.add_argument("--eval-episodes", type=int, default=10, help="Evaluation episodes")

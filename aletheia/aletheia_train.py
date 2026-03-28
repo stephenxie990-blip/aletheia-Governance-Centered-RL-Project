@@ -8076,8 +8076,14 @@ def _resolve_resume_steps_since_collect(
     *,
     global_step: int,
     train_steps_per_cycle: int,
+    legacy_steps_since_collect_mode: str = "strict",
 ) -> int:
     cycle = max(1, int(train_steps_per_cycle))
+    legacy_mode = str(legacy_steps_since_collect_mode or "strict").strip().lower()
+    if legacy_mode not in {"strict", "infer"}:
+        raise ValueError(
+            "legacy_steps_since_collect_mode must be one of ['infer', 'strict']"
+        )
     raw_value = getattr(state, "steps_since_collect", -1)
     if raw_value is None:
         raw_value = -1
@@ -8088,6 +8094,13 @@ def _resolve_resume_steps_since_collect(
             "Resume checkpoint contains non-integer steps_since_collect metadata"
         ) from exc
     if value < 0:
+        if legacy_mode != "infer":
+            raise ValueError(
+                "Resume checkpoint missing collect-phase metadata "
+                "(steps_since_collect); pass "
+                "TrainingCheckpointRestorePolicy("
+                "legacy_steps_since_collect_mode='infer') to allow legacy inference"
+            )
         inferred = _infer_resume_steps_since_collect(
             global_step=global_step,
             train_steps_per_cycle=cycle,
@@ -20955,6 +20968,17 @@ class TrainingLoop:
                 or getattr(self.config, "num_train_steps", None)
                 or getattr(self.config, "total_env_steps", 100_000)
             )
+        if resume_restore_policy is None:
+            resolved_resume_restore_policy = TrainingCheckpointRestorePolicy()
+        else:
+            if not isinstance(
+                resume_restore_policy,
+                TrainingCheckpointRestorePolicy,
+            ):
+                raise TypeError(
+                    "resume_restore_policy must be a TrainingCheckpointRestorePolicy."
+                )
+            resolved_resume_restore_policy = resume_restore_policy.normalized()
 
         resumed_from_checkpoint = False
         if resume_from is not None and os.path.exists(resume_from):
@@ -20966,7 +20990,7 @@ class TrainingLoop:
                 opt_bundle=self.opt_bundle,
                 buffer=self.buffer,
                 trusted_source=True,
-                restore_policy=resume_restore_policy,
+                restore_policy=resolved_resume_restore_policy,
                 current_effective_training_config=self.config,
             )
             self.global_step = ts.global_step
@@ -20989,6 +21013,9 @@ class TrainingLoop:
                 ts,
                 global_step=self.global_step,
                 train_steps_per_cycle=self.train_steps_per_cycle,
+                legacy_steps_since_collect_mode=(
+                    resolved_resume_restore_policy.legacy_steps_since_collect_mode
+                ),
             )
             resumed_from_checkpoint = True
             logger.info(f"Resumed from step {self.global_step}")
