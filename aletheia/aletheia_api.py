@@ -4538,6 +4538,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--enable-eval", action="store_true", help="Enable evaluation during training")
     parser.add_argument("--eval-episodes", type=int, default=10, help="Evaluation episodes")
     parser.add_argument("--eval-max-steps", type=int, default=1000, help="Max steps per eval episode")
+    parser.add_argument(
+        "--log-interval",
+        type=int,
+        default=LOG_INTERVAL,
+        help="Training log interval in update steps",
+    )
+    parser.add_argument(
+        "--eval-interval",
+        type=int,
+        default=EVAL_INTERVAL,
+        help="Evaluation interval in update steps (0 disables periodic eval)",
+    )
+    parser.add_argument(
+        "--save-interval",
+        type=int,
+        default=SAVE_INTERVAL,
+        help="Checkpoint interval in update steps (0 disables periodic saves)",
+    )
     parser.add_argument("--collect-steps-per-cycle", type=int, default=32, help="Environment steps collected per train cycle")
     parser.add_argument("--train-steps-per-cycle", type=int, default=4, help="Gradient updates per train cycle")
     parser.add_argument("--verbose", action="store_true", help="Verbose logging")

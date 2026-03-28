@@ -6878,6 +6878,13 @@ class TestRunTrainContracts(unittest.TestCase):
                 "CartPole-v1",
                 "--steps",
                 "7",
+                "--enable-eval",
+                "--log-interval",
+                "11",
+                "--eval-interval",
+                "13",
+                "--save-interval",
+                "17",
                 "--resume-from",
                 "resume.pt",
                 "--resume-model-restore-mode",
@@ -6894,6 +6901,10 @@ class TestRunTrainContracts(unittest.TestCase):
         parsed_args = run_train_mock.call_args.args[0]
         self.assertEqual(parsed_args.env, "CartPole-v1")
         self.assertEqual(parsed_args.steps, 7)
+        self.assertTrue(parsed_args.enable_eval)
+        self.assertEqual(parsed_args.log_interval, 11)
+        self.assertEqual(parsed_args.eval_interval, 13)
+        self.assertEqual(parsed_args.save_interval, 17)
         self.assertEqual(parsed_args.resume_from, "resume.pt")
         self.assertEqual(parsed_args.resume_model_restore_mode, "strict")
         self.assertEqual(parsed_args.resume_optimizer_restore_mode, "skip")
