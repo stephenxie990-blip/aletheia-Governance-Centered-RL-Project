@@ -789,6 +789,63 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertEqual(loop.global_step, 1)
         self.assertEqual([kind for kind, *_ in events], ["eval", "log", "save"])
 
+    def test_training_loop_run_disables_nonpositive_intervals(self):
+        loop = SimpleNamespace()
+        loop.config = SimpleNamespace(
+            total_steps=2,
+            num_train_steps=2,
+            total_env_steps=2,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+            imagination_only=False,
+            log_interval=0,
+            eval_interval=0,
+            save_interval=0,
+        )
+        loop.device = torch.device("cpu")
+        loop.global_step = 0
+        loop.episode_count = 0
+        loop.env_steps_collected = 0
+        loop._steps_since_collect = 1
+        loop.train_steps_per_cycle = 1
+        loop.collect_steps_per_cycle = 1
+        loop.model = object()
+        loop.imagination_engine = object()
+        loop.logger_fn = lambda metrics, step=0: None
+        loop._should_collect = lambda: False
+        loop._add_to_buffer = lambda result: None
+        loop._sync_episode_counts = lambda collector: None
+        loop._build_real_batch = lambda: {"real": True}
+        loop._build_imagined_batch = lambda reference_real_batch=None: {"imag": True}
+        loop._build_wm_batch = lambda: {"wm": True}
+        loop._select_rl_batch = lambda real_batch, imag_batch: (real_batch, "real", 0.0)
+        loop.should_log = lambda: train_mod.TrainingLoop.should_log(loop)
+        loop.should_eval = lambda: train_mod.TrainingLoop.should_eval(loop)
+        loop.should_save = lambda: train_mod.TrainingLoop.should_save(loop)
+
+        def train_step(**kwargs):
+            del kwargs
+            loop.global_step += 1
+            return {"loss_actor": 0.0}
+
+        loop.train_step = train_step
+
+        def eval_fn(model, step):
+            raise AssertionError(f"eval_fn should be disabled, got step={step}")
+
+        def save_fn(model, step):
+            raise AssertionError(f"save_fn should be disabled, got step={step}")
+
+        train_mod.TrainingLoop.run(
+            loop,
+            num_steps=2,
+            data_collector=None,
+            eval_fn=eval_fn,
+            save_fn=save_fn,
+        )
+
+        self.assertEqual(loop.global_step, 2)
+
     def test_training_loop_run_rejects_collectors_returning_none(self):
         loop = SimpleNamespace()
         loop.config = SimpleNamespace(total_steps=1, num_train_steps=1, total_env_steps=1, wm_pretrain_steps=0, warmup_steps=0, imagination_only=False)
@@ -5311,6 +5368,72 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertAlmostEqual(state.best_eval_return, 7.5, places=6)
         self.assertEqual(state.best_step, 12)
         self.assertEqual(state.adaptive_compensation_state, {"post_transition": 0.75})
+
+    def test_training_state_interval_checks_disable_nonpositive_intervals(self):
+        state = train_mod.TrainingState(
+            config=TrainingConfig(),
+            device=torch.device("cpu"),
+        )
+        state.global_step = 12
+        state.config.log_interval = 0
+        state.config.eval_interval = 0
+        state.config.save_interval = -1
+
+        self.assertFalse(state.should_log())
+        self.assertFalse(state.should_eval())
+        self.assertFalse(state.should_save())
+
+    def test_restore_idle_compensation_state_is_not_degraded(self):
+        actor = nn.Linear(4, 2)
+        critic = nn.Linear(4, 1)
+        world_model = nn.Linear(4, 4)
+        model = train_mod.build_training_model(
+            actor=actor,
+            critic=critic,
+            world_model=world_model,
+        )
+        loop = train_mod.TrainingLoop(
+            model=model,
+            buffer=_DummyBuffer(capacity=8),
+            config=TrainingConfig(
+                total_steps=1,
+                num_train_steps=1,
+                wm_pretrain_steps=0,
+                warmup_steps=0,
+            ),
+            env=None,
+            device=torch.device("cpu"),
+        )
+        exported_state = loop._export_adaptive_compensation_state()
+
+        restored_loop = train_mod.TrainingLoop(
+            model=train_mod.build_training_model(
+                actor=nn.Linear(4, 2),
+                critic=nn.Linear(4, 1),
+                world_model=nn.Linear(4, 4),
+            ),
+            buffer=_DummyBuffer(capacity=8),
+            config=TrainingConfig(
+                total_steps=1,
+                num_train_steps=1,
+                wm_pretrain_steps=0,
+                warmup_steps=0,
+            ),
+            env=None,
+            device=torch.device("cpu"),
+        )
+
+        restored_loop._restore_adaptive_compensation_state(
+            exported_state,
+            strict=True,
+        )
+
+        report = restored_loop._adaptive_compensation_restore_report
+        self.assertEqual(report["status"], "restored")
+        self.assertEqual(report["issues"], [])
+        self.assertEqual(report["post_solved_anchor"]["status"], "not_attempted")
+        self.assertEqual(report["behavior_policy_anchor"]["status"], "not_attempted")
+        self.assertEqual(report["real_stability_registry"]["status"], "not_attempted")
 
     def test_agent_save_persists_agent_bootstrap_bundle_metadata(self):
         handle = api.AgentHandle.__new__(api.AgentHandle)

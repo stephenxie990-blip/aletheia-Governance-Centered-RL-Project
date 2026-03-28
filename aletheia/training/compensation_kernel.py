@@ -627,11 +627,17 @@ def _record_restore_degradation(
     section_report: Dict[str, Any],
     checkpoint_path: Optional[str] = None,
 ) -> None:
-    report[section] = dict(section_report)
-    issues = list(section_report.get("issues", []))
-    report["issues"].extend(issues)
     status = str(section_report.get("status", "restored"))
-    if status != "restored":
+    issues = [str(item) for item in list(section_report.get("issues", []))]
+    degraded = status not in {"restored", "not_attempted"}
+    if degraded and not issues:
+        issues.append(f"{section} restore status={status}")
+    normalized_section_report = dict(section_report)
+    normalized_section_report["status"] = status
+    normalized_section_report["issues"] = issues
+    report[section] = normalized_section_report
+    report["issues"].extend(issues)
+    if degraded:
         report["status"] = "degraded"
     if issues:
         logger.warning(
@@ -1066,12 +1072,26 @@ def restore_adaptive_compensation_state(
     runtime._real_stability_certified_anchor_registry_evals = []
     runtime._real_stability_certified_anchor_registry_telemetries = []
     registry_report = {
-        "status": "missing",
+        "status": "not_attempted",
         "restored_entries": 0,
         "skipped_entries": 0,
         "issues": [],
     }
-    for entry in list(state.get("real_stability_certified_registry_entries", [])):
+    raw_registry_entries: list[Any] = []
+    if "real_stability_certified_registry_entries" not in state:
+        registry_report["status"] = "missing"
+        registry_report["issues"].append(
+            "real_stability_registry entries missing from checkpoint payload"
+        )
+    else:
+        raw_registry_entries = state.get("real_stability_certified_registry_entries", [])
+        if not isinstance(raw_registry_entries, (list, tuple)):
+            registry_report["status"] = "failed"
+            registry_report["issues"].append(
+                "real_stability_registry entries must be a list"
+            )
+            raw_registry_entries = []
+    for entry in list(raw_registry_entries):
         if not isinstance(entry, dict):
             registry_report["skipped_entries"] += 1
             registry_report["issues"].append(

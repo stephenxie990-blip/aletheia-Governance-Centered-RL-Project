@@ -7977,6 +7977,13 @@ class RolloutCollector:
 
 # ── Training State ──────────────────────────────────────────────────────────
 
+def _is_periodic_interval_due(global_step: int, interval: Any) -> bool:
+    every = int(interval)
+    if every <= 0:
+        return False
+    return int(global_step) % every == 0
+
+
 def _infer_resume_steps_since_collect(
     *,
     global_step: int,
@@ -8075,13 +8082,13 @@ class TrainingState:
         return False
 
     def should_log(self) -> bool:
-        return self.global_step % self.config.log_interval == 0
+        return _is_periodic_interval_due(self.global_step, self.config.log_interval)
 
     def should_eval(self) -> bool:
-        return self.global_step % self.config.eval_interval == 0
+        return _is_periodic_interval_due(self.global_step, self.config.eval_interval)
 
     def should_save(self) -> bool:
-        return self.global_step % self.config.save_interval == 0
+        return _is_periodic_interval_due(self.global_step, self.config.save_interval)
 
     def get_elapsed_time(self) -> float:
         return time.time() - self.start_time
@@ -9016,18 +9023,45 @@ class TrainingLoop:
         self._adaptive_imag_compensation_post_solved_critic_anchor_step = -1
         self._adaptive_imag_compensation_post_solved_critic_anchor_eval = -float("inf")
 
+        if state is None:
+            report["issues"].append(
+                "post_solved anchor state missing from checkpoint payload"
+            )
+            return report
         anchor_state = dict(state) if isinstance(state, dict) else {}
+        if not isinstance(state, dict):
+            report["issues"].append(
+                "post_solved anchor state is not a mapping"
+            )
+            return report
         actor_anchor_params = self._tensor_dict_to_cpu(
             anchor_state.get("actor_anchor_params")
         )
+        actor_anchor_actor_state_dict = anchor_state.get("actor_anchor_actor_state_dict")
+        critic_anchor_state_dict = anchor_state.get("critic_anchor_critic_state_dict")
+        actor_anchor_step = int(anchor_state.get("actor_anchor_step", -1))
+        actor_anchor_eval = float(anchor_state.get("actor_anchor_eval", -float("inf")))
+        critic_anchor_step = int(anchor_state.get("critic_anchor_step", -1))
+        critic_anchor_eval = float(anchor_state.get("critic_anchor_eval", -float("inf")))
+        if (
+            not actor_anchor_params
+            and not actor_anchor_actor_state_dict
+            and not critic_anchor_state_dict
+            and actor_anchor_step < 0
+            and critic_anchor_step < 0
+            and not math.isfinite(actor_anchor_eval)
+            and not math.isfinite(critic_anchor_eval)
+        ):
+            report["status"] = "not_attempted"
+            report["actor_anchor_actor_status"] = "not_attempted"
+            report["critic_anchor_status"] = "not_attempted"
+            return report
         actor_anchor_actor, actor_anchor_actor_report = self._load_frozen_module_restore_result(
-            anchor_state.get("actor_anchor_actor_state_dict")
-            ,
+            actor_anchor_actor_state_dict,
             self._clone_frozen_actor,
         )
         critic_anchor_critic, critic_anchor_report = self._load_frozen_module_restore_result(
-            anchor_state.get("critic_anchor_critic_state_dict")
-            ,
+            critic_anchor_state_dict,
             self._clone_frozen_critic,
         )
         report["actor_anchor_actor_status"] = str(
@@ -9132,10 +9166,30 @@ class TrainingLoop:
         self._behavior_policy_eval_anchor_actor = None
         self._behavior_policy_eval_anchor_step = -1
         self._behavior_policy_eval_anchor_eval = -float("inf")
+        if state is None:
+            report["issues"].append(
+                "behavior_policy anchor state missing from checkpoint payload"
+            )
+            return report
         anchor_state = dict(state) if isinstance(state, dict) else {}
+        if not isinstance(state, dict):
+            report["issues"].append(
+                "behavior_policy anchor state is not a mapping"
+            )
+            return report
+        actor_state_dict = anchor_state.get("actor_state_dict")
+        anchor_step = int(anchor_state.get("step", -1))
+        anchor_eval = float(anchor_state.get("eval", -float("inf")))
+        if (
+            not actor_state_dict
+            and anchor_step < 0
+            and not math.isfinite(anchor_eval)
+        ):
+            report["status"] = "not_attempted"
+            report["actor_status"] = "not_attempted"
+            return report
         anchor_actor, anchor_actor_report = self._load_frozen_module_restore_result(
-            anchor_state.get("actor_state_dict")
-            ,
+            actor_state_dict,
             self._clone_frozen_actor,
         )
         report["actor_status"] = str(anchor_actor_report.get("status", "missing_state_dict"))
@@ -10556,13 +10610,13 @@ class TrainingLoop:
     # ── Interval checks ─────────────────────────────────────────────────
 
     def should_log(self) -> bool:
-        return self.global_step % self.config.log_interval == 0
+        return _is_periodic_interval_due(self.global_step, self.config.log_interval)
 
     def should_eval(self) -> bool:
-        return self.global_step % self.config.eval_interval == 0
+        return _is_periodic_interval_due(self.global_step, self.config.eval_interval)
 
     def should_save(self) -> bool:
-        return self.global_step % self.config.save_interval == 0
+        return _is_periodic_interval_due(self.global_step, self.config.save_interval)
 
     # ── Buffer ingestion [BUG-1.5 FIX] ─────────────────────────────────
 
