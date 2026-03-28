@@ -2369,11 +2369,20 @@ class TrainingConfig:
         if self.critic_gammas:
             self.critic_gammas = tuple(sorted(float(g) for g in self.critic_gammas))
         if self.critic_n_ensemble is not None and int(self.critic_n_ensemble) <= 0:
-            self._handle_mismatch("critic_n_ensemble must be positive when provided")
+            self._handle_mismatch(
+                "critic_n_ensemble must be positive when provided",
+                critical=True,
+            )
         if self.critic_hidden_dim is not None and int(self.critic_hidden_dim) <= 0:
-            self._handle_mismatch("critic_hidden_dim must be positive when provided")
+            self._handle_mismatch(
+                "critic_hidden_dim must be positive when provided",
+                critical=True,
+            )
         if self.critic_pessimism is not None and not 0.0 < float(self.critic_pessimism) <= 0.5:
-            self._handle_mismatch("critic_pessimism must be in (0, 0.5] when provided")
+            self._handle_mismatch(
+                "critic_pessimism must be in (0, 0.5] when provided",
+                critical=True,
+            )
 
         # 配置模式
         if str(self.config_mode).lower() == "strict":
@@ -2394,7 +2403,8 @@ class TrainingConfig:
         if self.wm_pretrain_steps + self.warmup_steps > self.num_train_steps:
             self._handle_mismatch(
                 "wm_pretrain_steps + warmup_steps exceeds num_train_steps, "
-                "training may skip main phase"
+                "training may skip main phase",
+                critical=True,
             )
 
         # 批量验证
@@ -2553,9 +2563,9 @@ class TrainingConfig:
         if not (dv in ("cuda", "cpu", "mps", "auto") or dv.startswith("cuda:")):
             raise ValueError(f"device must be auto/cuda/cpu/mps or cuda:<id>, got {self.device}")
 
-    def _handle_mismatch(self, message: str) -> bool:
+    def _handle_mismatch(self, message: str, *, critical: bool = False) -> bool:
         mode = str(self.validation_mode).lower()
-        if mode == "strict":
+        if critical or mode == "strict":
             raise ValueError(message)
         if mode == "warn":
             warnings.warn(message)

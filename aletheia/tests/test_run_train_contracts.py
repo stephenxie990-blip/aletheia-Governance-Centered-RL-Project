@@ -1423,6 +1423,50 @@ class TestRunTrainContracts(unittest.TestCase):
 
         self.assertEqual(str(cfg.validation_mode), "warn")
 
+    def _assert_training_config_critical_mismatch_rejected(
+        self,
+        expected_message: str,
+        **overrides,
+    ) -> None:
+        base_kwargs = dict(
+            config_mode="compat",
+            total_steps=4,
+            num_train_steps=4,
+            total_env_steps=32,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+        )
+        base_kwargs.update(overrides)
+        for validation_mode in ("strict", "warn", "off"):
+            with self.subTest(validation_mode=validation_mode, overrides=overrides):
+                with self.assertRaisesRegex(ValueError, expected_message):
+                    TrainingConfig(validation_mode=validation_mode, **base_kwargs)
+
+    def test_training_config_rejects_non_positive_critic_ensemble_across_validation_modes(self):
+        self._assert_training_config_critical_mismatch_rejected(
+            "critic_n_ensemble must be positive",
+            critic_n_ensemble=0,
+        )
+
+    def test_training_config_rejects_non_positive_critic_hidden_dim_across_validation_modes(self):
+        self._assert_training_config_critical_mismatch_rejected(
+            "critic_hidden_dim must be positive",
+            critic_hidden_dim=0,
+        )
+
+    def test_training_config_rejects_out_of_range_critic_pessimism_across_validation_modes(self):
+        self._assert_training_config_critical_mismatch_rejected(
+            "critic_pessimism must be in \\(0, 0.5\\] when provided",
+            critic_pessimism=0.75,
+        )
+
+    def test_training_config_rejects_wm_budget_overflow_across_validation_modes(self):
+        self._assert_training_config_critical_mismatch_rejected(
+            "wm_pretrain_steps \\+ warmup_steps exceeds num_train_steps",
+            wm_pretrain_steps=3,
+            warmup_steps=2,
+        )
+
     def test_unknown_activation_raises_under_default_training_config_validation(self):
         previous_mode = "warn"
         set_activation_validation_mode(previous_mode)
