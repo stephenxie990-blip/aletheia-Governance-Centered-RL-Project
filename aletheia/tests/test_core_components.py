@@ -60,6 +60,7 @@ from aletheia.aletheia_world_model import (
     MultiScaleContinue,
     NStepTerminationLoss,
     PolicyFeatures,
+    PredictiveEngine,
     PredictionHeads,
     PredictionHeadsConfig,
     ShortcutConsistencyLoss,
@@ -644,6 +645,17 @@ class _ConstantMSCHead(nn.Module):
         return loss, {"total": loss.detach()}
 
 
+class _DummyPredictiveStateTransition(nn.Module):
+    def __init__(self, free_nats: float = 0.0):
+        super().__init__()
+        self.config = SimpleNamespace(
+            deter_dim=5,
+            distribution=SimpleNamespace(num_distributions=2, num_classes=2),
+            feat_dim=7,
+            kl=SimpleNamespace(free_nats=free_nats),
+        )
+
+
 class TestConsistencyAuditorStrictFailures(unittest.TestCase):
     def _make_trajectory(self, batch_size: int = 2, seq_len: int = 4) -> WMTrajectory:
         return TestConsistencyAuditorRemainingSteps()._make_trajectory(
@@ -774,6 +786,56 @@ class TestConsistencyAuditorStrictFailures(unittest.TestCase):
             ConsistencyAuditorConfig(
                 nst=NSTConfig(enabled=True),
             )
+
+
+class TestPredictiveEngineStrictKLContracts(unittest.TestCase):
+    def _make_engine(self, *, free_nats: float = 0.0) -> PredictiveEngine:
+        return PredictiveEngine(
+            state_transition=_DummyPredictiveStateTransition(free_nats=free_nats),
+            reward_head=nn.Identity(),
+            continue_head=nn.Identity(),
+            decoder=None,
+            symlog=nn.Identity(),
+        )
+
+    def _make_trajectory(self, *, kl_seq: object) -> WMTrajectory:
+        batch_size = 2
+        seq_len = 4
+        return WMTrajectory(
+            vitals=torch.zeros(batch_size, seq_len + 1, 3),
+            actions=torch.zeros(batch_size, seq_len, 2),
+            rewards=torch.zeros(batch_size, seq_len),
+            dones=torch.zeros(batch_size, seq_len),
+            h_seq=torch.zeros(batch_size, seq_len, 5),
+            z_seq=torch.zeros(batch_size, seq_len, 4),
+            feats_post=torch.zeros(batch_size, seq_len, 7),
+            kl_seq=kl_seq,
+        )
+
+    def test_compute_kl_loss_raises_when_kl_seq_missing(self):
+        engine = self._make_engine()
+        trajectory = self._make_trajectory(kl_seq=None)
+
+        with self.assertRaisesRegex(RuntimeError, "WMTrajectory\\.kl_seq is required"):
+            engine._compute_kl_loss(trajectory, {})
+
+    def test_compute_kl_loss_raises_when_kl_seq_is_not_tensor(self):
+        engine = self._make_engine()
+        trajectory = self._make_trajectory(kl_seq="bad-kl-seq")
+
+        with self.assertRaisesRegex(RuntimeError, "WMTrajectory\\.kl_seq is required"):
+            engine._compute_kl_loss(trajectory, {})
+
+    def test_compute_kl_loss_still_computes_when_kl_seq_is_present(self):
+        engine = self._make_engine(free_nats=0.25)
+        trajectory = self._make_trajectory(kl_seq=torch.full((2, 4), 0.1))
+        metrics = {}
+
+        loss = engine._compute_kl_loss(trajectory, metrics)
+
+        self.assertAlmostEqual(float(loss.item()), 0.25, places=6)
+        self.assertAlmostEqual(float(metrics["kl_missing"]), 0.0, places=6)
+        self.assertAlmostEqual(float(metrics["kl_raw_mean"].item()), 0.1, places=6)
 
 
 class _FakeShortcutTransitionOut:

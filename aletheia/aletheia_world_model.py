@@ -6185,29 +6185,23 @@ class PredictiveEngine(nn.Module):
     ) -> Tensor:
         kl_seq = trajectory.kl_seq
         device = trajectory.device
-        
+
         if kl_seq is None or not isinstance(kl_seq, Tensor):
-            loss = torch.tensor(0.0, device=device)
-            raw_loss = torch.tensor(0.0, device=device)
-            if not getattr(self, "_warned_missing_kl_seq", False):
-                logger.warning(
-                    "WMTrajectory.kl_seq is missing; KL loss is forced to 0.0. "
-                    "This can destabilize RSSM training."
-                )
-                self._warned_missing_kl_seq = True
-            metrics['kl_missing'] = 1.0
-        else:
-            mask = self._loss_mask(trajectory).to(dtype=kl_seq.dtype)
-            free_nats = float(
-                getattr(getattr(self.rssm_branch.st.config, "kl", None), "free_nats", 0.0) or 0.0
+            raise RuntimeError(
+                "WMTrajectory.kl_seq is required for KL loss computation"
             )
-            raw_loss = (kl_seq * mask).sum() / (mask.sum() + 1e-8)
-            if free_nats > 0.0:
-                kl_seq_clamped = kl_seq.clamp(min=free_nats)
-            else:
-                kl_seq_clamped = kl_seq
-            loss = (kl_seq_clamped * mask).sum() / (mask.sum() + 1e-8)
-            metrics['kl_missing'] = 0.0
+
+        mask = self._loss_mask(trajectory).to(dtype=kl_seq.dtype)
+        free_nats = float(
+            getattr(getattr(self.rssm_branch.st.config, "kl", None), "free_nats", 0.0) or 0.0
+        )
+        raw_loss = (kl_seq * mask).sum() / (mask.sum() + 1e-8)
+        if free_nats > 0.0:
+            kl_seq_clamped = kl_seq.clamp(min=free_nats)
+        else:
+            kl_seq_clamped = kl_seq
+        loss = (kl_seq_clamped * mask).sum() / (mask.sum() + 1e-8)
+        metrics['kl_missing'] = 0.0
         
         metrics['kl_mean'] = loss.detach()
         metrics['kl_raw_mean'] = raw_loss.detach()
