@@ -4799,6 +4799,64 @@ class TrainingStep:
                 metrics[f"critic/router_weight_mean_{idx}"] = float(value)
         return loss, metrics
 
+    @staticmethod
+    def _snapshot_optimizer_grads(
+        optimizer: torch.optim.Optimizer,
+    ) -> List[Tuple[Tensor, Optional[Tensor]]]:
+        grad_snapshot: List[Tuple[Tensor, Optional[Tensor]]] = []
+        for group in optimizer.param_groups:
+            for param in group["params"]:
+                grad_snapshot.append(
+                    (
+                        param,
+                        None if param.grad is None else param.grad.detach().clone(),
+                    )
+                )
+        return grad_snapshot
+
+    @staticmethod
+    def _clear_optimizer_grad_snapshot(
+        grad_snapshot: List[Tuple[Tensor, Optional[Tensor]]],
+    ) -> None:
+        for param, _ in grad_snapshot:
+            param.grad = None
+
+    @staticmethod
+    def _restore_optimizer_grads(
+        grad_snapshot: List[Tuple[Tensor, Optional[Tensor]]],
+    ) -> None:
+        for param, grad in grad_snapshot:
+            param.grad = None if grad is None else grad.clone()
+
+    @staticmethod
+    def _clip_optimizer_grad_snapshot(
+        grad_snapshot: List[Tuple[Tensor, Optional[Tensor]]],
+        max_norm: float,
+    ) -> float:
+        params = [param for param, grad in grad_snapshot if grad is not None]
+        if not params:
+            return 0.0
+        return float(torch.nn.utils.clip_grad_norm_(params, max_norm).item())
+
+    def _finalize_deferred_world_model_step(
+        self,
+        *,
+        grad_snapshot: List[Tuple[Tensor, Optional[Tensor]]],
+        optimizer_step: bool,
+    ) -> float:
+        try:
+            self._restore_optimizer_grads(grad_snapshot)
+            if not optimizer_step:
+                return 0.0
+            grad_norm = self._clip_optimizer_grad_snapshot(
+                grad_snapshot, self.opt.wm_grad_clip
+            )
+            if any(grad is not None for _, grad in grad_snapshot):
+                self.opt.wm_optimizer.step()
+            return grad_norm
+        except Exception as e:
+            raise RuntimeError(f"World-model update failed: {e}") from e
+
     def _run_world_model_update(
         self,
         *,
@@ -4808,10 +4866,12 @@ class TrainingStep:
         detect_anomaly: bool,
         zero_grad: bool,
         optimizer_step: bool,
+        defer_optimizer_step: bool,
         loss_scale: float,
         post_solved_drift_damping_active: bool,
         post_solved_wm_scale: float,
-    ) -> Dict[str, float]:
+    ) -> Tuple[Dict[str, float], Optional[List[Tuple[Tensor, Optional[Tensor]]]]]:
+        deferred_grad_snapshot: Optional[List[Tuple[Tensor, Optional[Tensor]]]] = None
         try:
             with torch.autograd.set_detect_anomaly(detect_anomaly):
                 semantic_consistency_penalty, semantic_metrics = (
@@ -4859,7 +4919,12 @@ class TrainingStep:
                 scaled_wm_loss = loss_wm * loss_scale * post_solved_wm_scale
                 if isinstance(scaled_wm_loss, Tensor) and scaled_wm_loss.requires_grad:
                     scaled_wm_loss.backward()
-                    if optimizer_step:
+                    if defer_optimizer_step:
+                        deferred_grad_snapshot = self._snapshot_optimizer_grads(
+                            self.opt.wm_optimizer
+                        )
+                        self._clear_optimizer_grad_snapshot(deferred_grad_snapshot)
+                    elif optimizer_step:
                         wm_params = [
                             p
                             for g in self.opt.wm_optimizer.param_groups
@@ -4906,7 +4971,7 @@ class TrainingStep:
                         wm_metrics[target_key] = float(value.item())
                     elif isinstance(value, (int, float)):
                         wm_metrics[target_key] = float(value)
-                return wm_metrics
+                return wm_metrics, deferred_grad_snapshot
         except Exception as e:
             raise RuntimeError(f"World-model update failed: {e}") from e
 
@@ -5014,19 +5079,22 @@ class TrainingStep:
             old_values = rl_batch.get("values")
 
         wm_metrics: Dict[str, float] = {}
+        deferred_wm_grad_snapshot: Optional[List[Tuple[Tensor, Optional[Tensor]]]] = None
         world_model = getattr(self.model, "world_model", None)
         if (
             world_model is not None
             and self.opt.wm_optimizer is not None
             and wm_batch is not None
         ):
-            wm_metrics = self._run_world_model_update(
+            defer_wm_optimizer_step = not skip_rl
+            wm_metrics, deferred_wm_grad_snapshot = self._run_world_model_update(
                 world_model=world_model,
                 wm_batch=wm_batch,
                 cfg=cfg,
                 detect_anomaly=detect_anomaly,
                 zero_grad=zero_grad,
                 optimizer_step=optimizer_step,
+                defer_optimizer_step=defer_wm_optimizer_step,
                 loss_scale=loss_scale,
                 post_solved_drift_damping_active=post_solved_drift_damping_active,
                 post_solved_wm_scale=post_solved_wm_scale,
@@ -7028,6 +7096,11 @@ class TrainingStep:
                 "critic/value_error_mean": 0.0,
                 "critic/value_error_std": 0.0,
             }
+        if deferred_wm_grad_snapshot is not None:
+            wm_metrics["wm_grad_norm"] = self._finalize_deferred_world_model_step(
+                grad_snapshot=deferred_wm_grad_snapshot,
+                optimizer_step=optimizer_step,
+            )
         rl_accum.update(wm_metrics)
         rl_accum["train/source"] = source_tag
         rl_accum["train/optimizer_step"] = 1.0 if optimizer_step else 0.0

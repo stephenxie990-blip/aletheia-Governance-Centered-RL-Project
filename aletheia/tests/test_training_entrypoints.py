@@ -495,6 +495,79 @@ class _BrokenPolicyFeatureSemanticModel(_SemanticModel):
         raise RuntimeError("broken policy feature projection")
 
 
+class _VersionLockedFeatureFn(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, scale: torch.Tensor, base: torch.Tensor) -> torch.Tensor:
+        ctx.save_for_backward(scale, base)
+        return base * scale.view(*([1] * base.dim()))
+
+    @staticmethod
+    def backward(ctx, grad_output: torch.Tensor):
+        scale, base = ctx.saved_tensors
+        grad_scale = (grad_output * base).sum().reshape_as(scale)
+        grad_base = grad_output * scale.view(*([1] * base.dim()))
+        return grad_scale, grad_base
+
+
+class _BackwardAwareSGD(torch.optim.SGD):
+    def __init__(self, params, tracker, *, lr: float = 0.05):
+        super().__init__(params, lr=lr)
+        self._tracker = tracker
+
+    def step(self, closure=None):
+        if not bool(self._tracker.get("rl_backward_seen", False)):
+            raise AssertionError("wm optimizer stepped before imagined RL backward")
+        return super().step(closure=closure)
+
+
+class _SharedGraphWorldModel(nn.Module):
+    def __init__(self, device: torch.device):
+        super().__init__()
+        self.device = device
+        self.scale = nn.Parameter(torch.tensor([1.0], device=device))
+
+    def observe_sequence(self, vitals, actions, dones):
+        del vitals, actions, dones
+        return {}
+
+    def build_trajectory(
+        self,
+        seq_result,
+        vitals,
+        actions,
+        rewards,
+        dones,
+        remaining_steps=None,
+    ):
+        del seq_result, vitals, actions, rewards, dones, remaining_steps
+        return {}
+
+    def compute_loss(self, trajectory):
+        del trajectory
+        return _LossPacket(self.scale.square().sum())
+
+
+class _SharedGraphFeatureModel(nn.Module):
+    def __init__(self, vital_dim: int, action_dim: int, device: torch.device):
+        super().__init__()
+        self.world_model = _SharedGraphWorldModel(device)
+        self.critic = _FlatCritic(vital_dim)
+        self.actor = SimpleNamespace(is_discrete=False)
+        self._action_dim = int(action_dim)
+
+    def forward(self, vitals, temperature: float = 1.0, intent=None):
+        del temperature, intent
+        dist = D.Normal(
+            torch.zeros_like(vitals[..., : self._action_dim]),
+            torch.ones_like(vitals[..., : self._action_dim]),
+        )
+        value = self.critic(vitals)
+        return dist, value
+
+    def build_policy_features(self, base_features: torch.Tensor) -> torch.Tensor:
+        return _VersionLockedFeatureFn.apply(self.world_model.scale, base_features)
+
+
 class TestTrainingEntryPoints(unittest.TestCase):
     def _make_batch(self, model: nn.Module, device: torch.device):
         torch.manual_seed(0)
@@ -515,6 +588,45 @@ class TestTrainingEntryPoints(unittest.TestCase):
             "advantages": torch.randn(B, T, device=device),
             "returns": torch.randn(B, T, device=device),
             "values": values.detach(),
+        }
+        return batch
+
+    def _make_imagined_shared_graph_batch(
+        self,
+        model: _SharedGraphFeatureModel,
+        device: torch.device,
+        tracker=None,
+    ):
+        vitals = torch.tensor(
+            [[[0.2, -0.1, 0.5, 1.0], [0.4, 0.3, -0.2, 0.7]]],
+            device=device,
+        )
+        actions = torch.tensor(
+            [[[0.0, 1.0], [1.0, 0.0]]],
+            device=device,
+        )
+        policy_features = model.build_policy_features(vitals)
+        policy_features.retain_grad()
+        if tracker is not None:
+            def _mark_backward(grad):
+                tracker["rl_backward_seen"] = True
+                return grad
+
+            policy_features.register_hook(_mark_backward)
+        batch = {
+            "vitals": vitals,
+            "policy_features": policy_features,
+            "use_precomputed_policy_outputs": True,
+            "actions": actions,
+            "rewards": torch.zeros((1, 2), device=device),
+            "dones": torch.zeros((1, 2), device=device),
+            "log_probs": torch.zeros((1, 2), device=device),
+            "entropy": torch.zeros((1, 2), device=device),
+            "advantages": torch.zeros((1, 2), device=device),
+            "returns": torch.ones((1, 2), device=device),
+            "target_actor": torch.ones((1, 2), device=device),
+            "base_actor": torch.zeros((1, 2), device=device),
+            "weights_actor": torch.ones((1, 2), device=device),
         }
         return batch
 
@@ -1580,6 +1692,62 @@ class TestTrainingEntryPoints(unittest.TestCase):
         self.assertAlmostEqual(float(metrics["wm/semantic_consistency_uses_target_critic"]), 1.0, places=6)
         self.assertGreater(float(metrics["wm/semantic_consistency_loss"]), 0.0)
         self.assertGreater(float(metrics["wm/semantic_consistency_penalty"]), 0.0)
+        self.assertGreater(float(metrics["loss_wm"]), 0.0)
+        self.assertGreater(float(metrics["wm_grad_norm"]), 0.0)
+
+    def test_imagined_run_step_defers_world_model_step_until_after_rl_backward(self):
+        device = torch.device("cpu")
+        model = _SharedGraphFeatureModel(4, 2, device).to(device)
+        tracker = {"rl_backward_seen": False}
+        opt_bundle = OptimizerBundle(
+            wm_optimizer=_BackwardAwareSGD(model.world_model.parameters(), tracker),
+            rl_optimizer=torch.optim.SGD(model.critic.parameters(), lr=0.05),
+        )
+        stepper = TrainingStep(
+            model=model,
+            opt_bundle=opt_bundle,
+            config=TrainingConfig(),
+            device=device,
+        )
+        batch = self._make_imagined_shared_graph_batch(model, device, tracker=tracker)
+
+        metrics = stepper.run_step(
+            batch=batch,
+            rl_batch=batch,
+            wm_batch=batch,
+            source_tag="imag",
+        )
+
+        self.assertTrue(tracker["rl_backward_seen"])
+        self.assertIn("loss_wm", metrics)
+        self.assertGreater(float(metrics["grad_norm"]), 0.0)
+
+    def test_imagined_run_step_keeps_shared_world_model_graph_alive_across_wm_and_rl(self):
+        device = torch.device("cpu")
+        model = _SharedGraphFeatureModel(4, 2, device).to(device)
+        opt_bundle = OptimizerBundle(
+            wm_optimizer=torch.optim.SGD(model.world_model.parameters(), lr=0.05),
+            rl_optimizer=torch.optim.SGD(model.critic.parameters(), lr=0.05),
+        )
+        stepper = TrainingStep(
+            model=model,
+            opt_bundle=opt_bundle,
+            config=TrainingConfig(),
+            device=device,
+        )
+        batch = self._make_imagined_shared_graph_batch(model, device)
+        scale_before = model.world_model.scale.detach().clone()
+
+        metrics = stepper.run_step(
+            batch=batch,
+            rl_batch=batch,
+            wm_batch=batch,
+            source_tag="imag",
+        )
+
+        self.assertIsNotNone(batch["policy_features"].grad)
+        self.assertGreater(float(batch["policy_features"].grad.abs().sum().item()), 0.0)
+        self.assertFalse(torch.allclose(model.world_model.scale.detach(), scale_before))
         self.assertGreater(float(metrics["loss_wm"]), 0.0)
         self.assertGreater(float(metrics["wm_grad_norm"]), 0.0)
 
