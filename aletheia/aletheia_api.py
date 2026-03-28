@@ -2302,10 +2302,14 @@ class AgentHandle:
         ``strict=False`` only relaxes optional component restores. Required
         components still restore strictly by default.
         """
+        if allow_unsafe_fallback:
+            raise ValueError(
+                "allow_unsafe_fallback is no longer supported for agent checkpoint loads"
+            )
         checkpoint = read_checkpoint(
             path,
             map_location=self.device,
-            allow_unsafe_fallback=allow_unsafe_fallback,
+            weights_only=True,
         )
 
         if self.world_model is not None and hasattr(self.world_model, "_ensure_v45_components"):
@@ -3049,11 +3053,14 @@ def load_agent(
     """
     if env is None:
         raise ValueError("env is required to load agent")
+    if allow_unsafe_fallback:
+        raise ValueError(
+            "allow_unsafe_fallback is no longer supported for agent checkpoint loads"
+        )
 
     checkpoint_path = Path(path)
     config_overrides = read_agent_creation_overrides_from_checkpoint(
         checkpoint_path,
-        allow_unsafe_fallback=allow_unsafe_fallback,
     )
     if config_overrides:
         logger.info(
@@ -3062,7 +3069,7 @@ def load_agent(
         )
 
     agent = create_agent(env, config_overrides=config_overrides, device=device)
-    agent.load(path, strict=strict, allow_unsafe_fallback=allow_unsafe_fallback)
+    agent.load(path, strict=strict)
 
     return agent
 
@@ -4046,7 +4053,6 @@ def run_train(
                 str(resume_from),
                 train_config,
                 agent.device,
-                allow_unsafe_fallback=True,
                 trusted_source=True,
             )
         except Exception as exc:
@@ -4442,7 +4448,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--resume-model-restore-mode",
         type=str,
         default="strict",
-        choices=["strict", "compatible"],
+        choices=["strict"],
         help="Model restore mode for trainer-state resume",
     )
     parser.add_argument(

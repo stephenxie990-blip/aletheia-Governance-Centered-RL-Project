@@ -1511,6 +1511,12 @@ class ConfigBundle:
     perceptor_overrides: Dict[str, Any] = field(default_factory=dict)
     bootstrap_env_profile: Optional[Any] = None
 
+    @staticmethod
+    def _serialize_bootstrap_env_profile(value: Optional[Any]) -> Optional[Any]:
+        if isinstance(value, EnvProfile):
+            return asdict(value)
+        return copy.deepcopy(value)
+
     def to_factory_overrides(self) -> Dict[str, Any]:
         """Encode bootstrap state into the factory bridge payload."""
         return export_factory_bridge_overrides(
@@ -1518,7 +1524,9 @@ class ConfigBundle:
                 custom_overrides=copy.deepcopy(dict(self.custom_overrides)),
                 router_overrides=copy.deepcopy(dict(self.router_overrides)),
                 perceptor_overrides=copy.deepcopy(dict(self.perceptor_overrides)),
-                bridge_env_profile=copy.deepcopy(self.bootstrap_env_profile),
+                bridge_env_profile=self._serialize_bootstrap_env_profile(
+                    self.bootstrap_env_profile
+                ),
             )
         )
 
@@ -1529,7 +1537,9 @@ class ConfigBundle:
             "custom_overrides": copy.deepcopy(dict(self.custom_overrides)),
             "router_overrides": copy.deepcopy(dict(self.router_overrides)),
             "perceptor_overrides": copy.deepcopy(dict(self.perceptor_overrides)),
-            "bootstrap_env_profile": copy.deepcopy(self.bootstrap_env_profile),
+            "bootstrap_env_profile": self._serialize_bootstrap_env_profile(
+                self.bootstrap_env_profile
+            ),
         }
 
     def to_agent_creation_overrides(self) -> Dict[str, Any]:

@@ -2197,8 +2197,8 @@ class ReplayBuffer:
         """Serialise buffer contents for checkpointing."""
         state: Dict[str, Any] = {
             "schema_version": self._state_schema_version,
-            "episodes": self.episodes,
-            "current": self.current,
+            "episodes": self._checkpoint_safe_value(self.episodes),
+            "current": self._checkpoint_safe_value(self.current),
             "capacity": self.capacity,
             "store_obs": self.store_obs,
             "episode_counter": self._episode_counter,
@@ -2208,15 +2208,94 @@ class ReplayBuffer:
         return state
 
     @staticmethod
+    def _checkpoint_safe_value(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: ReplayBuffer._checkpoint_safe_value(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [ReplayBuffer._checkpoint_safe_value(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(ReplayBuffer._checkpoint_safe_value(item) for item in value)
+        if isinstance(value, np.ndarray):
+            if value.dtype.hasobject or value.dtype.kind not in {"?", "b", "i", "u", "f", "c"}:
+                raise TypeError(
+                    "ReplayBuffer checkpoint payload only supports numeric or boolean numpy arrays."
+                )
+            return torch.from_numpy(np.array(value, copy=True))
+        if isinstance(value, np.generic):
+            return value.item()
+        return copy.deepcopy(value)
+
+    @staticmethod
+    def _checkpoint_array_to_numpy(
+        value: Any,
+        *,
+        dtype: Optional[Any] = None,
+    ) -> np.ndarray:
+        if isinstance(value, torch.Tensor):
+            array = value.detach().cpu().numpy()
+        else:
+            array = np.asarray(value)
+        if dtype is not None:
+            array = np.asarray(array, dtype=dtype)
+        return array
+
+    @staticmethod
+    def _normalize_loaded_scalar_list(value: Any) -> list[float]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            items = value
+        else:
+            items = list(value)
+        normalized: list[float] = []
+        for item in items:
+            array = ReplayBuffer._checkpoint_array_to_numpy(item, dtype=np.float32).reshape(-1)
+            if array.size != 1:
+                raise TypeError("ReplayBuffer scalar checkpoint payload must contain scalar values.")
+            normalized.append(float(array[0]))
+        return normalized
+
+    @staticmethod
+    def _normalize_loaded_array_list(value: Any) -> list[np.ndarray]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            items = value
+        else:
+            items = list(value)
+        return [
+            ReplayBuffer._checkpoint_array_to_numpy(item, dtype=np.float32)
+            for item in items
+        ]
+
+    @staticmethod
+    def _normalize_loaded_obs_list(value: Any) -> list[Any]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            items = value
+        else:
+            items = list(value)
+        return [
+            ReplayBuffer._normalize_obs_payload(item)
+            if item is not None
+            else None
+            for item in items
+        ]
+
+    @staticmethod
     def _normalize_obs_payload(obs: Any) -> Any:
         if isinstance(obs, dict):
             return {
-                str(k): np.asarray(v, dtype=np.float32)
+                str(k): ReplayBuffer._checkpoint_array_to_numpy(v, dtype=np.float32)
                 for k, v in obs.items()
             }
         if obs is None:
             return None
-        return np.asarray(obs, dtype=np.float32)
+        return ReplayBuffer._checkpoint_array_to_numpy(obs, dtype=np.float32)
 
     @staticmethod
     def _align_vitals_danger(
@@ -2240,19 +2319,25 @@ class ReplayBuffer:
         if not isinstance(episode, dict):
             raise TypeError("ReplayBuffer episode payload must be a mapping.")
 
-        vitals = np.asarray(episode.get("vitals", []), dtype=np.float32)
-        actions = np.asarray(episode.get("actions", []), dtype=np.float32)
-        rewards = np.asarray(episode.get("rewards", []), dtype=np.float32).reshape(-1)
-        dones = np.asarray(episode.get("dones", []), dtype=np.float32).reshape(-1)
-        terminated = np.asarray(
+        vitals = self._checkpoint_array_to_numpy(episode.get("vitals", []), dtype=np.float32)
+        actions = self._checkpoint_array_to_numpy(episode.get("actions", []), dtype=np.float32)
+        rewards = self._checkpoint_array_to_numpy(
+            episode.get("rewards", []),
+            dtype=np.float32,
+        ).reshape(-1)
+        dones = self._checkpoint_array_to_numpy(
+            episode.get("dones", []),
+            dtype=np.float32,
+        ).reshape(-1)
+        terminated = self._checkpoint_array_to_numpy(
             episode.get("terminated", episode.get("dones", [])),
             dtype=np.float32,
         ).reshape(-1)
-        truncated = np.asarray(
+        truncated = self._checkpoint_array_to_numpy(
             episode.get("truncated", np.zeros_like(dones)),
             dtype=np.float32,
         ).reshape(-1)
-        log_probs = np.asarray(
+        log_probs = self._checkpoint_array_to_numpy(
             episode.get("log_probs", np.zeros_like(rewards)),
             dtype=np.float32,
         ).reshape(-1)
@@ -2285,7 +2370,10 @@ class ReplayBuffer:
                 [np.zeros(1, dtype=np.float32), _as_float32(step_danger)]
             )
         else:
-            danger = np.asarray(danger_raw, dtype=np.float32).reshape(-1)
+            danger = self._checkpoint_array_to_numpy(
+                danger_raw,
+                dtype=np.float32,
+            ).reshape(-1)
         danger = self._align_vitals_danger(danger, vitals_len=vitals_len)
 
         normalized_episode: Dict[str, Any] = {
@@ -2308,7 +2396,7 @@ class ReplayBuffer:
 
         remaining_raw = episode.get("remaining_steps")
         if remaining_raw is not None:
-            normalized_episode["remaining_steps"] = np.asarray(
+            normalized_episode["remaining_steps"] = self._checkpoint_array_to_numpy(
                 remaining_raw,
                 dtype=np.float32,
             ).reshape(-1)
@@ -2335,15 +2423,11 @@ class ReplayBuffer:
             "truncated": [],
             "log_probs": [],
         }
-        normalized["obs"] = current.get("obs")
-        for key in ("vitals", "actions", "rewards", "dones", "terminated", "truncated", "log_probs"):
-            value = current.get(key)
-            if value is None:
-                normalized[key] = []
-            elif isinstance(value, list):
-                normalized[key] = list(value)
-            else:
-                normalized[key] = list(value)
+        normalized["obs"] = ReplayBuffer._normalize_loaded_obs_list(current.get("obs"))
+        for key in ("vitals", "actions"):
+            normalized[key] = ReplayBuffer._normalize_loaded_array_list(current.get(key))
+        for key in ("rewards", "dones", "terminated", "truncated", "log_probs"):
+            normalized[key] = ReplayBuffer._normalize_loaded_scalar_list(current.get(key))
         if not normalized["terminated"] and normalized["dones"]:
             normalized["terminated"] = list(normalized["dones"])
         if not normalized["truncated"] and normalized["dones"]:
@@ -8279,6 +8363,10 @@ class TrainingStateManager:
             [FIX-CKPT] If provided, optimizer states are restored.
         allow_unsafe_fallback : bool
         """
+        if allow_unsafe_fallback:
+            raise ValueError(
+                "allow_unsafe_fallback is no longer supported for trainer-state loads"
+            )
         state = TrainingState(config=config, device=device)
         if not os.path.exists(checkpoint_path):
             return state
@@ -8286,7 +8374,6 @@ class TrainingStateManager:
         ckpt = read_training_checkpoint(
             checkpoint_path,
             map_location=device,
-            allow_unsafe_fallback=allow_unsafe_fallback,
             trusted_source=trusted_source,
         )
         return restore_training_checkpoint_payload(
@@ -20888,7 +20975,6 @@ class TrainingLoop:
                 model=self.model,
                 opt_bundle=self.opt_bundle,
                 buffer=self.buffer,
-                allow_unsafe_fallback=True,
                 trusted_source=True,
                 restore_policy=resume_restore_policy,
                 current_effective_training_config=self.config,

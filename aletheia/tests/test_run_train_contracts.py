@@ -1627,7 +1627,7 @@ class TestRunTrainContracts(unittest.TestCase):
                      train_mod.TrainingStateManager,
                      "load",
                      return_value=resume_state,
-                 ):
+                 ) as load_mock:
                 result = api.run_train(
                     args,
                     input_spec={"env": train_env, "eval_env": eval_env},
@@ -1647,6 +1647,12 @@ class TestRunTrainContracts(unittest.TestCase):
             self.assertTrue(bool(policy.restore_buffer))
             self.assertEqual(str(policy.model_restore_mode), "strict")
             self.assertEqual(str(policy.optimizer_restore_mode), "auto")
+            load_mock.assert_called_once_with(
+                str(resume_path),
+                cfg,
+                agent.device,
+                trusted_source=True,
+            )
             self.assertTrue((Path(tmpdir) / "resume_latest.pt").exists())
             self.assertTrue((Path(tmpdir) / "trainer_state_final.pt").exists())
             self.assertTrue((Path(tmpdir) / "best.pt").exists())
@@ -4859,7 +4865,7 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertAlmostEqual(float(cfg.adaptive_imag_compensation_post_solved_drift_damping_wm_scale), 0.5, places=6)
         self.assertAlmostEqual(float(cfg.adaptive_imag_compensation_post_solved_drift_damping_critic_scale), 0.6, places=6)
 
-    def test_training_state_manager_load_requires_explicit_compatible_model_restore(self):
+    def test_training_state_manager_load_rejects_compatible_model_restore(self):
         class _SaveModel(nn.Module):
             def __init__(self):
                 super().__init__()
@@ -4892,21 +4898,19 @@ class TestRunTrainContracts(unittest.TestCase):
                     device=device,
                     model=load_model,
                 )
-            restored = train_mod.TrainingStateManager.load(
-                ckpt_path,
-                config=config,
-                device=device,
-                model=load_model,
-                restore_policy=TrainingCheckpointRestorePolicy(
-                    model_restore_mode="compatible"
-                ),
-            )
+            with self.assertRaisesRegex(ValueError, "model_restore_mode must be one of"):
+                train_mod.TrainingStateManager.load(
+                    ckpt_path,
+                    config=config,
+                    device=device,
+                    model=load_model,
+                    restore_policy=TrainingCheckpointRestorePolicy(
+                        model_restore_mode="compatible"
+                    ),
+                )
 
-        self.assertEqual(restored.global_step, 0)
         self.assertNotIn("config", raw_checkpoint)
         self.assertEqual(_effective_training_config_of(raw_checkpoint), config.to_dict())
-        self.assertTrue(torch.allclose(load_model.core.weight, save_model.core.weight))
-        self.assertTrue(torch.allclose(load_model.core.bias, save_model.core.bias))
 
     def test_build_training_checkpoint_payload_uses_canonical_schema_keys(self):
         config = TrainingConfig()
@@ -5181,25 +5185,26 @@ class TestRunTrainContracts(unittest.TestCase):
         model.load_state_dict.assert_called_once_with({"weight": 1})
         opt_bundle.load_state_dict.assert_not_called()
 
-    def test_restore_training_checkpoint_payload_compatible_model_restore_mode_uses_non_strict_load(self):
+    def test_restore_training_checkpoint_payload_rejects_compatible_model_restore_mode(self):
         config = TrainingConfig()
         state = train_mod.TrainingState(config=config, device=torch.device("cpu"))
         model = mock.Mock()
 
-        restore_training_checkpoint_payload(
-            {
-                "training_state": state.state_dict(),
-                "effective_training_config": config.to_dict(),
-                "model": {"weight": 1},
-            },
-            state=state,
-            model=model,
-            checkpoint_path="trainer_state.pt",
-            restore_policy=TrainingCheckpointRestorePolicy(model_restore_mode="compatible"),
-            current_effective_training_config=config.to_dict(),
-        )
+        with self.assertRaisesRegex(ValueError, "model_restore_mode must be one of"):
+            restore_training_checkpoint_payload(
+                {
+                    "training_state": state.state_dict(),
+                    "effective_training_config": config.to_dict(),
+                    "model": {"weight": 1},
+                },
+                state=state,
+                model=model,
+                checkpoint_path="trainer_state.pt",
+                restore_policy=TrainingCheckpointRestorePolicy(model_restore_mode="compatible"),
+                current_effective_training_config=config.to_dict(),
+            )
 
-        model.load_state_dict.assert_called_once_with({"weight": 1}, strict=False)
+        model.load_state_dict.assert_not_called()
 
     def test_restore_training_checkpoint_payload_raises_when_component_bootstrap_fails(self):
         config = TrainingConfig()
@@ -5324,17 +5329,27 @@ class TestRunTrainContracts(unittest.TestCase):
                 config=config,
                 device=device,
                 model=model,
-                allow_unsafe_fallback=True,
                 trusted_source=True,
             )
 
         read_mock.assert_called_once_with(
             "/tmp/trainer_state.pt",
             map_location=device,
-            allow_unsafe_fallback=True,
             trusted_source=True,
         )
         self.assertIsInstance(restored, train_mod.TrainingState)
+
+    def test_training_state_manager_load_rejects_unsafe_fallback_opt_in(self):
+        config = TrainingConfig()
+        device = torch.device("cpu")
+
+        with self.assertRaisesRegex(ValueError, "allow_unsafe_fallback is no longer supported"):
+            train_mod.TrainingStateManager.load(
+                "/tmp/trainer_state.pt",
+                config=config,
+                device=device,
+                allow_unsafe_fallback=True,
+            )
 
     def test_training_state_sync_from_loop_captures_runtime_fields(self):
         config = TrainingConfig()
@@ -5615,12 +5630,12 @@ class TestRunTrainContracts(unittest.TestCase):
         }
 
         with mock.patch.object(api, "read_checkpoint", return_value=checkpoint) as read_mock:
-            handle.load("/tmp/fake.pt", strict=False, allow_unsafe_fallback=True)
+            handle.load("/tmp/fake.pt", strict=False)
 
         read_mock.assert_called_once_with(
             "/tmp/fake.pt",
             map_location=handle.device,
-            allow_unsafe_fallback=True,
+            weights_only=True,
         )
         handle.world_model.load_state_dict.assert_called_once_with({"wm": 1}, strict=True)
         handle.actor.load_state_dict.assert_called_once_with({"actor": 2}, strict=True)
@@ -5628,6 +5643,13 @@ class TestRunTrainContracts(unittest.TestCase):
         handle.router.load_state_dict.assert_called_once_with({"router": 4}, strict=False)
         handle.will.load_state_dict.assert_called_once_with({"will": 5}, strict=False)
         self.assertEqual(handle._step_count, 7)
+
+    def test_agent_load_rejects_unsafe_fallback_opt_in(self):
+        handle = api.AgentHandle.__new__(api.AgentHandle)
+        handle.device = torch.device("cpu")
+
+        with self.assertRaisesRegex(ValueError, "allow_unsafe_fallback is no longer supported"):
+            handle.load("/tmp/fake.pt", allow_unsafe_fallback=True)
 
     def test_load_agent_uses_checkpoint_agent_bootstrap_bundle_when_present(self):
         env = _CountingEnv(done_after=2)
@@ -5807,6 +5829,17 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertIs(restored, loaded_agent)
         self.assertEqual(len(create_calls), 1)
         self.assertEqual(loaded_agent.load_calls, [(str(ckpt_path), False, False)])
+
+    def test_load_agent_rejects_unsafe_fallback_opt_in(self):
+        env = _CountingEnv(done_after=2)
+
+        with self.assertRaisesRegex(ValueError, "allow_unsafe_fallback is no longer supported"):
+            api.load_agent(
+                "/tmp/fake.pt",
+                env=env,
+                device="cpu",
+                allow_unsafe_fallback=True,
+            )
 
     def test_config_bundle_for_env_rejects_noncanonical_policy_aliases(self):
         env = _CountingEnv(done_after=2)
@@ -6414,7 +6447,7 @@ class TestRunTrainContracts(unittest.TestCase):
                 "--resume-from",
                 "resume.pt",
                 "--resume-model-restore-mode",
-                "compatible",
+                "strict",
                 "--resume-optimizer-restore-mode",
                 "skip",
                 "--resume-restore-layers",
@@ -6426,9 +6459,20 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertEqual(parsed_args.env, "CartPole-v1")
         self.assertEqual(parsed_args.steps, 7)
         self.assertEqual(parsed_args.resume_from, "resume.pt")
-        self.assertEqual(parsed_args.resume_model_restore_mode, "compatible")
+        self.assertEqual(parsed_args.resume_model_restore_mode, "strict")
         self.assertEqual(parsed_args.resume_optimizer_restore_mode, "skip")
         self.assertEqual(parsed_args.resume_restore_layers, "model,buffer")
+
+    def test_main_rejects_compatible_resume_model_restore_mode(self):
+        with self.assertRaises(SystemExit) as exc:
+            api.main([
+                "--env",
+                "CartPole-v1",
+                "--resume-model-restore-mode",
+                "compatible",
+            ])
+
+        self.assertEqual(int(exc.exception.code), 2)
 
 
 if __name__ == "__main__":

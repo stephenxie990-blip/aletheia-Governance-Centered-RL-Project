@@ -12,7 +12,7 @@ from ._checkpoint_schema_primitives import (
 
 logger = logging.getLogger("aletheia.training_checkpoint_schema")
 _VALID_OPTIMIZER_RESTORE_MODES = {"auto", "strict", "compatible", "skip"}
-_VALID_MODEL_RESTORE_MODES = {"strict", "compatible"}
+_VALID_MODEL_RESTORE_MODES = {"strict"}
 
 
 @dataclass(frozen=True)
@@ -160,10 +160,7 @@ def restore_training_checkpoint_payload(
                     f"world_model ensure_v45_components failed: {exc}"
                 ) from exc
         try:
-            if policy.model_restore_mode == "compatible":
-                model.load_state_dict(checkpoint["model"], strict=False)
-            else:
-                model.load_state_dict(checkpoint["model"])
+            model.load_state_dict(checkpoint["model"])
         except RuntimeError as exc:
             raise RuntimeError(
                 "Training checkpoint restore failed for "

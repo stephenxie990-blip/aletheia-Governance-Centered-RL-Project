@@ -254,6 +254,24 @@ class TestSafeTorchLoad(unittest.TestCase):
             except OSError:
                 pass
 
+    def test_safe_torch_load_loads_legacy_numpy_array_payload(self):
+        fd, path = tempfile.mkstemp(suffix=".pt")
+        os.close(fd)
+        legacy_payload = {
+            "arr": np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32),
+            "mask": np.array([True, False], dtype=np.bool_),
+        }
+        try:
+            torch.save(legacy_payload, path)
+            obj = safe_torch_load(path, map_location="cpu", weights_only=True)
+            self.assertTrue(np.array_equal(np.asarray(obj["arr"]), legacy_payload["arr"]))
+            self.assertTrue(np.array_equal(np.asarray(obj["mask"]), legacy_payload["mask"]))
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
     def test_safe_torch_load_trusted_fallback_suppresses_warning(self):
         fd, path = tempfile.mkstemp(suffix=".pt")
         os.close(fd)
@@ -283,6 +301,143 @@ class TestSafeTorchLoad(unittest.TestCase):
                 os.remove(path)
             except OSError:
                 pass
+
+
+class TestReplayBufferCheckpointSchema(unittest.TestCase):
+    def test_state_dict_roundtrip_is_weights_only_safe_for_completed_episode(self):
+        buf = ReplayBuffer(capacity=10, store_obs=False)
+        buf.start_episode(initial_vitals=np.zeros((4,), dtype=np.float32))
+        buf.add_step(
+            vitals=np.ones((4,), dtype=np.float32),
+            action=np.array([1.0, 0.0], dtype=np.float32),
+            reward=1.0,
+            done=False,
+            terminated=False,
+            truncated=False,
+            log_prob=0.1,
+        )
+        buf.add_step(
+            vitals=np.full((4,), 2.0, dtype=np.float32),
+            action=np.array([0.0, 1.0], dtype=np.float32),
+            reward=0.5,
+            done=True,
+            terminated=True,
+            truncated=False,
+            log_prob=0.2,
+        )
+
+        state = buf.state_dict()
+        self.assertIsInstance(state["episodes"][0]["vitals"], torch.Tensor)
+        self.assertIsNone(state["current"])
+
+        fd, path = tempfile.mkstemp(suffix=".pt")
+        os.close(fd)
+        try:
+            torch.save({"replay_buffer": state}, path)
+            payload = safe_torch_load(path, map_location="cpu", weights_only=True)
+            restored = ReplayBuffer(capacity=10, store_obs=False)
+            restored.load_state_dict(payload["replay_buffer"])
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+        self.assertEqual(len(restored.episodes), 1)
+        episode = restored.episodes[0]
+        self.assertTrue(
+            np.array_equal(
+                episode["vitals"],
+                np.array(
+                    [
+                        [0.0, 0.0, 0.0, 0.0],
+                        [1.0, 1.0, 1.0, 1.0],
+                        [2.0, 2.0, 2.0, 2.0],
+                    ],
+                    dtype=np.float32,
+                ),
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                episode["actions"],
+                np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32),
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                episode["log_probs"],
+                np.array([0.1, 0.2], dtype=np.float32),
+            )
+        )
+
+    def test_state_dict_roundtrip_is_weights_only_safe_for_inflight_episode(self):
+        buf = ReplayBuffer(capacity=10, store_obs=True)
+        buf.start_episode(
+            initial_vitals=np.zeros((2,), dtype=np.float32),
+            initial_obs={"sensor": np.zeros((3,), dtype=np.float32)},
+        )
+        buf.add_step(
+            vitals=np.ones((2,), dtype=np.float32),
+            action=np.array([1.0, 0.0], dtype=np.float32),
+            reward=1.0,
+            done=False,
+            terminated=False,
+            truncated=False,
+            obs={"sensor": np.ones((3,), dtype=np.float32)},
+            log_prob=0.3,
+        )
+
+        state = buf.state_dict()
+        self.assertIsNotNone(state["current"])
+        self.assertIsInstance(state["current"]["vitals"][0], torch.Tensor)
+        self.assertIsInstance(state["current"]["obs"][0]["sensor"], torch.Tensor)
+
+        fd, path = tempfile.mkstemp(suffix=".pt")
+        os.close(fd)
+        try:
+            torch.save({"replay_buffer": state}, path)
+            payload = safe_torch_load(path, map_location="cpu", weights_only=True)
+            restored = ReplayBuffer(capacity=10, store_obs=True)
+            restored.load_state_dict(payload["replay_buffer"])
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+        self.assertIsNotNone(restored.current)
+        self.assertEqual(len(restored.current["vitals"]), 2)
+        self.assertTrue(
+            np.array_equal(
+                restored.current["vitals"][0],
+                np.zeros((2,), dtype=np.float32),
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                restored.current["vitals"][1],
+                np.ones((2,), dtype=np.float32),
+            )
+        )
+        self.assertEqual(restored.current["rewards"], [1.0])
+        self.assertEqual(restored.current["dones"], [0.0])
+        self.assertEqual(restored.current["terminated"], [0.0])
+        self.assertEqual(restored.current["truncated"], [0.0])
+        self.assertEqual(len(restored.current["log_probs"]), 1)
+        self.assertAlmostEqual(restored.current["log_probs"][0], 0.3, places=6)
+        self.assertTrue(
+            np.array_equal(
+                restored.current["obs"][0]["sensor"],
+                np.zeros((3,), dtype=np.float32),
+            )
+        )
+        self.assertTrue(
+            np.array_equal(
+                restored.current["obs"][1]["sensor"],
+                np.ones((3,), dtype=np.float32),
+            )
+        )
 
 
 class TestDistributionFactoryKL(unittest.TestCase):

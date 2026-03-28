@@ -578,7 +578,27 @@ def _patch_numpy_safe_globals() -> None:
         if not hasattr(torch.serialization, "add_safe_globals"):
             return
 
-        safe_types = [np.generic, np.dtype, np.ndarray]
+        dtype_safe_types = []
+        for dtype in (
+            np.bool_,
+            np.float16,
+            np.float32,
+            np.float64,
+            np.int8,
+            np.int16,
+            np.int32,
+            np.int64,
+            np.uint8,
+            np.uint16,
+            np.uint32,
+            np.uint64,
+        ):
+            try:
+                dtype_safe_types.append(type(np.dtype(dtype)))
+            except TypeError:
+                continue
+
+        safe_types = [np.generic, np.dtype, np.ndarray, EnvProfile, *dtype_safe_types]
 
         # np._core.multiarray._reconstruct 仅在 numpy >= 2.0 存在
         # numpy < 2.0 使用 np.core.multiarray._reconstruct
