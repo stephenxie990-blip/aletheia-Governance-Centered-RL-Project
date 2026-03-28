@@ -34,6 +34,9 @@ from aletheia._training_checkpoint_schema import (
     build_training_checkpoint_payload,
     restore_training_checkpoint_payload,
 )
+from aletheia._checkpoint_metadata import (
+    read_agent_creation_overrides_from_checkpoint,
+)
 from aletheia._run_artifact_schema import (
     RunArtifactPaths,
     build_eval_record,
@@ -5177,6 +5180,30 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertIsNone(seed)
         self.assertIsNone(config_overrides)
         self.assertEqual(loaded_agent.load_calls, [(str(ckpt_path), True, False)])
+
+    def test_load_agent_raises_before_create_when_checkpoint_metadata_read_fails(self):
+        env = _CountingEnv(done_after=2)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_path = Path(tmpdir) / "broken.pt"
+            ckpt_path.write_text("not a checkpoint", encoding="utf-8")
+            with mock.patch.object(api, "create_agent") as create_agent_mock:
+                with self.assertRaises(Exception):
+                    api.load_agent(str(ckpt_path), env=env, device="cpu")
+
+        create_agent_mock.assert_not_called()
+
+    def test_read_agent_creation_overrides_from_checkpoint_can_soft_fail(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_path = Path(tmpdir) / "broken.pt"
+            ckpt_path.write_text("not a checkpoint", encoding="utf-8")
+
+            overrides = read_agent_creation_overrides_from_checkpoint(
+                ckpt_path,
+                fail_soft=True,
+            )
+
+        self.assertIsNone(overrides)
 
     def test_load_agent_allows_explicit_non_strict_opt_out(self):
         env = _CountingEnv(done_after=2)

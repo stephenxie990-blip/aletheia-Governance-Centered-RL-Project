@@ -67,14 +67,15 @@ def read_checkpoint_metadata(
     path: Union[str, Path],
     *,
     allow_unsafe_fallback: bool = False,
+    fail_soft: bool = False,
 ) -> Any:
-    """Read checkpoint payload for metadata inspection, returning ``None`` on soft failure."""
+    """Read checkpoint payload for metadata inspection."""
     return read_checkpoint(
         path,
         map_location="cpu",
         weights_only=False,
         allow_unsafe_fallback=allow_unsafe_fallback,
-        fail_soft=True,
+        fail_soft=fail_soft,
     )
 
 
@@ -82,11 +83,13 @@ def read_agent_creation_overrides_from_checkpoint(
     path: Union[str, Path],
     *,
     allow_unsafe_fallback: bool = False,
+    fail_soft: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Read create_agent() overrides from checkpoint bootstrap metadata."""
     checkpoint = read_checkpoint_metadata(
         path,
         allow_unsafe_fallback=allow_unsafe_fallback,
+        fail_soft=fail_soft,
     )
     return ConfigBundle.agent_creation_overrides_from_checkpoint_metadata(checkpoint)
 
