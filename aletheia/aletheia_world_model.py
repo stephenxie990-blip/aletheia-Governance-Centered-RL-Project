@@ -2876,6 +2876,11 @@ class StateTransition(nn.Module):
         memory_enabled = self._memory_enabled
         memory_state: Optional[MemoryState] = None
         if memory_enabled:
+            if use_checkpoint:
+                raise RuntimeError(
+                    "Gradient checkpointing is incompatible with dynamic memory. "
+                    "Disable use_checkpoint or memory."
+                )
             memory_state = MemoryState.create_initial(
                 batch_size=B,
                 hidden_dim=self._d_h,
@@ -2885,13 +2890,6 @@ class StateTransition(nn.Module):
                 dtype=dtype,
                 config=self._memory_cfg,
             )
-            # FIX LOGIC-3: checkpoint 与 memory 互斥添加警告
-            if use_checkpoint:
-                logger.warning(
-                    "Gradient checkpointing disabled: incompatible with dynamic memory. "
-                    "Set use_checkpoint=False to suppress this warning."
-                )
-                use_checkpoint = False
 
         # 序列处理
         for t in range(T):

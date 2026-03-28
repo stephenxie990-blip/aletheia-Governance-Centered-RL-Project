@@ -47,6 +47,7 @@ from aletheia.aletheia_config import (
     ContinueConfig,
     GradientWallConfig,
     LossWeightsConfig,
+    MemoryConfig,
     MHCConfig,
     MSCConfig,
     NSTConfig,
@@ -203,6 +204,43 @@ class TestStateTransition(unittest.TestCase):
         self.assertEqual(result["feats_post"].shape, (self.B, self.T, self.cfg.feat_dim))
         self.assertIn("z_post_raw_seq", result)
         self.assertEqual(result["z_post_raw_seq"].shape, (self.B, self.T, self.N * self.K))
+
+    def test_observe_sequence_rejects_checkpoint_when_dynamic_memory_enabled(self):
+        cfg = RSSMConfig(
+            deter_dim=64,
+            hidden_dim=64,
+            action_embed_dim=16,
+            obs_embed_dim=32,
+            z_embed_dim=32,
+            distribution=DistributionConfig(
+                num_distributions=self.N,
+                num_classes=self.K,
+                use_unimix=False,
+            ),
+            kl=KLConfig(free_nats=0.0),
+            use_feature_norm=True,
+            use_separate_norm=False,
+            use_persist_gate=False,
+            memory=MemoryConfig(
+                enabled=True,
+                buffer_size=8,
+                compressed_size=16,
+                compression_ratio=2,
+            ),
+        )
+        model = StateTransition(cfg)
+        obs_embeds = torch.randn(self.B, self.T, cfg.obs_embed_dim)
+        action_embeds = torch.randn(self.B, self.T, cfg.action_embed_dim)
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Gradient checkpointing is incompatible with dynamic memory",
+        ):
+            model.observe_sequence(
+                obs_embeds=obs_embeds,
+                action_embeds=action_embeds,
+                use_checkpoint=True,
+            )
 
     def test_state_for_next_chaining(self):
         """state_for_next 应可直接用于下一步输入"""
