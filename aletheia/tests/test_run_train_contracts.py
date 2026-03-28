@@ -1466,6 +1466,30 @@ class TestRunTrainContracts(unittest.TestCase):
             warmup_steps=2,
         )
 
+    def test_training_config_rejects_update_budget_mismatch_across_validation_modes(self):
+        self._assert_training_config_critical_mismatch_rejected(
+            "total_steps \\(4\\) != num_train_steps \\(3\\), using total_steps",
+            total_steps=4,
+            num_train_steps=3,
+        )
+
+    def test_training_config_allows_distinct_seq_len_and_wm_seq_len_across_validation_modes(self):
+        base_kwargs = dict(
+            config_mode="compat",
+            total_steps=4,
+            num_train_steps=4,
+            total_env_steps=32,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+            seq_len=7,
+            wm_seq_len=5,
+        )
+        for validation_mode in ("strict", "warn", "off"):
+            with self.subTest(validation_mode=validation_mode):
+                cfg = TrainingConfig(validation_mode=validation_mode, **base_kwargs)
+                self.assertEqual(int(cfg.seq_len), 7)
+                self.assertEqual(int(cfg.wm_seq_len), 5)
+
     def test_unknown_activation_raises_under_default_training_config_validation(self):
         previous_mode = "warn"
         set_activation_validation_mode(previous_mode)

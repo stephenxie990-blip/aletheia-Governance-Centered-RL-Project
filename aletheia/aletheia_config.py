@@ -5,7 +5,6 @@ import json
 import logging
 import math
 import os
-import warnings
 import copy
 import numpy as np
 from dataclasses import dataclass, field, asdict
@@ -2390,14 +2389,24 @@ class TrainingConfig:
         # [FIX-1] 每次 __post_init__ 独立的同步追踪集，避免跨实例污染
         synced: Set[frozenset] = set()
 
-        _sync_fields(self, "total_steps", "num_train_steps",
-                     handler=self._handle_mismatch, _synced=synced)
+        _sync_fields(
+            self,
+            "total_steps",
+            "num_train_steps",
+            handler=lambda message: self._handle_mismatch(message, critical=True),
+            _synced=synced,
+        )
         # ``total_steps`` / ``num_train_steps`` describe the update budget,
         # while ``total_env_steps`` is a separate environment-sampling budget.
-        # Strict mode should preserve both dimensions instead of treating them
-        # as redundant aliases.
-        _sync_fields(self, "seq_len", "wm_seq_len",
-                     force_align=False, handler=self._handle_mismatch, _synced=synced)
+        # ``seq_len`` / ``wm_seq_len`` are separate rollout and WM windows.
+        # Keep both when callers set them explicitly to different positive values.
+        _sync_fields(
+            self,
+            "seq_len",
+            "wm_seq_len",
+            force_align=False,
+            _synced=synced,
+        )
 
         if self.wm_pretrain_steps + self.warmup_steps > self.num_train_steps:
             self._handle_mismatch(
@@ -2563,12 +2572,8 @@ class TrainingConfig:
             raise ValueError(f"device must be auto/cuda/cpu/mps or cuda:<id>, got {self.device}")
 
     def _handle_mismatch(self, message: str, *, critical: bool = False) -> bool:
-        mode = str(self.validation_mode).lower()
-        if critical or mode == "strict":
-            raise ValueError(message)
-        if mode == "warn":
-            warnings.warn(message)
-        return True
+        del critical
+        raise ValueError(message)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

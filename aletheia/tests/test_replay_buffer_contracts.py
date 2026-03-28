@@ -2,7 +2,6 @@ import os
 import sys
 import tempfile
 import unittest
-import warnings
 from types import SimpleNamespace
 from unittest.mock import patch
 from pathlib import Path
@@ -272,30 +271,22 @@ class TestSafeTorchLoad(unittest.TestCase):
             except OSError:
                 pass
 
-    def test_safe_torch_load_trusted_fallback_suppresses_warning(self):
+    def test_safe_torch_load_rejects_unsafe_fallback_opt_in(self):
         fd, path = tempfile.mkstemp(suffix=".pt")
         os.close(fd)
         try:
             torch.save({"a": 1}, path)
-            with patch(
-                "aletheia.aletheia_foundation.torch.load",
-                side_effect=[
-                    RuntimeError("weights-only load failed"),
-                    {"a": 1},
-                ],
-            ) as load_mock:
-                with warnings.catch_warnings(record=True) as caught:
-                    warnings.simplefilter("always")
-                    obj = safe_torch_load(
-                        path,
-                        map_location="cpu",
-                        weights_only=True,
-                        allow_unsafe_fallback=True,
-                        trusted_source=True,
-                    )
-            self.assertEqual(obj["a"], 1)
-            self.assertEqual(len(caught), 0)
-            self.assertEqual(load_mock.call_count, 2)
+            with self.assertRaisesRegex(
+                ValueError,
+                "allow_unsafe_fallback is no longer supported",
+            ):
+                safe_torch_load(
+                    path,
+                    map_location="cpu",
+                    weights_only=True,
+                    allow_unsafe_fallback=True,
+                    trusted_source=True,
+                )
         finally:
             try:
                 os.remove(path)

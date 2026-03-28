@@ -622,6 +622,10 @@ def safe_torch_load(
     trusted_source: bool = False,
 ) -> Any:
     """安全地加载 PyTorch checkpoint，兼容新旧版本并处理 numpy 序列化问题。"""
+    if allow_unsafe_fallback:
+        raise ValueError(
+            "allow_unsafe_fallback is no longer supported in safe_torch_load"
+        )
     _patch_numpy_safe_globals()
 
     try:
@@ -630,17 +634,6 @@ def safe_torch_load(
         # 旧版 PyTorch 不支持 weights_only 参数
         if "unexpected keyword argument 'weights_only'" in str(e):
             return torch.load(path, map_location=map_location)
-        raise
-    except Exception:
-        if weights_only and allow_unsafe_fallback:
-            if not trusted_source:
-                warnings.warn(
-                    "Unsafe torch.load fallback enabled. This may execute arbitrary code "
-                    "if the checkpoint is untrusted.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-            return torch.load(path, map_location=map_location, weights_only=False)
         raise
 
 
