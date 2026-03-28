@@ -708,7 +708,7 @@ class TestConsistencyAuditorStrictFailures(unittest.TestCase):
         self.assertAlmostEqual(float(report.mhc_loss.item()), 0.0, places=6)
         self.assertTrue(bool(report.metrics["mhc_failed"]))
 
-    def test_nst_failure_can_fall_back_to_zero_loss_in_non_strict_mode(self):
+    def test_nst_failure_still_raises_in_non_strict_mode(self):
         auditor = ConsistencyAuditor(
             config=ConsistencyAuditorConfig(
                 strict_auxiliary_losses=False,
@@ -722,10 +722,8 @@ class TestConsistencyAuditorStrictFailures(unittest.TestCase):
         trajectory.remaining_steps = torch.ones_like(trajectory.dones, dtype=torch.long)
 
         with mock.patch.object(auditor, "_compute_msc", return_value=torch.tensor(0.0)):
-            report = auditor.audit(trajectory, world_model_ref=None)
-
-        self.assertAlmostEqual(float(report.nst_loss.item()), 0.0, places=6)
-        self.assertTrue(bool(report.metrics["nst_failed"]))
+            with self.assertRaisesRegex(RuntimeError, "NST auxiliary loss failed"):
+                auditor.audit(trajectory, world_model_ref=None)
 
     def test_danger_signal_failure_raises_in_strict_mode_by_default(self):
         auditor = ConsistencyAuditor(
@@ -737,7 +735,7 @@ class TestConsistencyAuditorStrictFailures(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Danger signal computation failed"):
             auditor.audit(self._make_trajectory(), world_model_ref=None)
 
-    def test_danger_signal_failure_can_fall_back_in_non_strict_mode(self):
+    def test_danger_signal_failure_still_raises_in_non_strict_mode(self):
         auditor = ConsistencyAuditor(
             config=ConsistencyAuditorConfig(
                 strict_auxiliary_losses=False,
@@ -747,9 +745,22 @@ class TestConsistencyAuditorStrictFailures(unittest.TestCase):
         )
         auditor.set_danger_fn(lambda vitals: (_ for _ in ()).throw(RuntimeError("danger boom")))
 
-        report = auditor.audit(self._make_trajectory(), world_model_ref=None)
+        with self.assertRaisesRegex(RuntimeError, "Danger signal computation failed"):
+            auditor.audit(self._make_trajectory(), world_model_ref=None)
 
-        self.assertGreater(float(report.msc_loss.item()), 0.0)
+    def test_danger_signal_missing_vitals_still_raises_in_non_strict_mode(self):
+        auditor = ConsistencyAuditor(
+            config=ConsistencyAuditorConfig(
+                strict_auxiliary_losses=False,
+                msc=MSCConfig(enabled=True),
+            ),
+            msc_head=_ConstantMSCHead(),
+        )
+        auditor.set_danger_fn(lambda vitals: vitals.sum(dim=-1, keepdim=True))
+        trajectory = SimpleNamespace(vitals=None)
+
+        with self.assertRaisesRegex(RuntimeError, "Danger signal computation failed"):
+            auditor._compute_danger(trajectory)
 
     def test_config_rejects_enabling_mhc_and_msc_together(self):
         with self.assertRaisesRegex(ValueError, "MHC and MSC cannot both be enabled"):

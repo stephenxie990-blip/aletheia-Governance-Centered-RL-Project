@@ -5607,46 +5607,40 @@ class ConsistencyAuditor(nn.Module):
         if not self.nst_enabled:
             return torch.tensor(0.0, device=device)
         if not self.msc_enabled or self._msc_head is None:
-            if self.strict_auxiliary_losses:
-                raise RuntimeError("NST auxiliary loss failed: MSC support is required")
-            return torch.tensor(0.0, device=device)
+            raise RuntimeError("NST auxiliary loss failed: MSC support is required")
         if remaining_steps is None:
-            if self.strict_auxiliary_losses:
-                raise RuntimeError("NST auxiliary loss failed: remaining_steps unavailable")
-            return torch.tensor(0.0, device=device)
+            raise RuntimeError("NST auxiliary loss failed: remaining_steps unavailable")
         try:
             msc_output = self._msc_head(trajectory.feats_post)
             term_probs = msc_output.get('termination_prob_dict')
             if term_probs is None:
                 raw_term_probs = msc_output.get('termination_probs')
                 if raw_term_probs is None:
-                    if self.strict_auxiliary_losses:
-                        raise RuntimeError(
-                            "NST auxiliary loss failed: MSC output missing termination probabilities"
-                        )
-                    return torch.tensor(0.0, device=device)
-                term_probs = self._msc_head.build_termination_prob_dict(raw_term_probs)
-            if not term_probs:
-                if self.strict_auxiliary_losses:
                     raise RuntimeError(
-                        "NST auxiliary loss failed: MSC termination probability dict is empty"
+                        "NST auxiliary loss failed: MSC output missing termination probabilities"
                     )
-                return torch.tensor(0.0, device=device)
+                build_term_prob_dict = getattr(self._msc_head, "build_termination_prob_dict", None)
+                if not callable(build_term_prob_dict):
+                    raise RuntimeError(
+                        "NST auxiliary loss failed: MSC head cannot build termination probability dict"
+                    )
+                term_probs = build_term_prob_dict(raw_term_probs)
+            if not term_probs:
+                raise RuntimeError(
+                    "NST auxiliary loss failed: MSC termination probability dict is empty"
+                )
             loss, m = compute_nst_loss(
                 self._nst_module,
                 term_probs,
                 remaining_steps,
-                strict=self.strict_auxiliary_losses,
+                strict=True,
             )
             metrics.update(m)
             return loss * weights.get('nst', self.config.nst.loss_scale)
         except Exception as e:
-            if self.strict_auxiliary_losses:
-                if isinstance(e, RuntimeError) and "NST auxiliary loss failed" in str(e):
-                    raise
-                raise RuntimeError(f"NST auxiliary loss failed: {e}") from e
-            logger.warning(f"NST computation failed: {e}")
-            return torch.tensor(0.0, device=device)
+            if isinstance(e, RuntimeError) and "NST auxiliary loss failed" in str(e):
+                raise
+            raise RuntimeError(f"NST auxiliary loss failed: {e}") from e
 
     def _compute_sc(self, trajectory, world_model_ref, metrics, weights) -> Tensor:
         if not self.sc_enabled:
@@ -5668,19 +5662,14 @@ class ConsistencyAuditor(nn.Module):
         fn = self.__dict__.get('_danger_fn')
         if fn is None:
             return None
-        if trajectory.vitals is None:
-            if self.strict_auxiliary_losses:
-                raise RuntimeError("Danger signal computation failed: trajectory.vitals is unavailable")
-            logger.warning("Danger signal unavailable: trajectory.vitals is None")
-            return None
+        vitals = getattr(trajectory, "vitals", None)
+        if vitals is None:
+            raise RuntimeError("Danger signal computation failed: trajectory.vitals is unavailable")
         try:
-            danger = fn(trajectory.vitals[:, 1:])
+            danger = fn(vitals[:, 1:])
             return danger.unsqueeze(-1) if danger.dim() == 2 else danger
         except Exception as exc:
-            if self.strict_auxiliary_losses:
-                raise RuntimeError(f"Danger signal computation failed: {exc}") from exc
-            logger.warning("Danger signal computation failed; continuing without danger target: %s", exc)
-            return None
+            raise RuntimeError(f"Danger signal computation failed: {exc}") from exc
 
     def get_info(self) -> Dict[str, Any]:
         return {
