@@ -9671,6 +9671,52 @@ class TrainingLoop:
         )
 
     @staticmethod
+    def _coerce_finite_telemetry_value(
+        value: Any,
+        *,
+        key: str,
+        context: str,
+    ) -> float:
+        try:
+            numeric = float(value)
+        except Exception as exc:
+            raise ValueError(
+                f"Invalid {context} value for {key}: {value!r}"
+            ) from exc
+        if not math.isfinite(numeric):
+            raise ValueError(
+                f"Invalid {context} value for {key}: {value!r}"
+            )
+        return numeric
+
+    @classmethod
+    def _sanitize_numeric_telemetry_mapping(
+        cls,
+        telemetry: Optional[Dict[str, Any]],
+        *,
+        allowed_keys: tuple[str, ...],
+        context: str,
+        optional_keys: tuple[str, ...] = (),
+    ) -> Dict[str, float]:
+        if telemetry is None:
+            return {}
+        if not isinstance(telemetry, dict):
+            raise ValueError(f"{context} must be a mapping")
+        if not telemetry:
+            return {}
+        optional = set(optional_keys)
+        sanitized: Dict[str, float] = {}
+        for key in allowed_keys:
+            if key in optional and key not in telemetry:
+                continue
+            sanitized[key] = cls._coerce_finite_telemetry_value(
+                telemetry.get(key, 0.0),
+                key=key,
+                context=context,
+            )
+        return sanitized
+
+    @staticmethod
     def _sanitize_real_stability_telemetry(
         telemetry: Optional[Dict[str, Any]],
     ) -> Dict[str, float]:
@@ -9699,17 +9745,12 @@ class TrainingLoop:
             "real_task_cert_alarm",
             "real_task_cert_recovery",
         }
-        if not telemetry:
-            return {}
-        sanitized: Dict[str, float] = {}
-        for key in allowed_keys:
-            if key in optional_keys and key not in telemetry:
-                continue
-            try:
-                sanitized[key] = float(telemetry.get(key, 0.0))
-            except Exception:
-                sanitized[key] = 0.0
-        return sanitized
+        return TrainingLoop._sanitize_numeric_telemetry_mapping(
+            telemetry,
+            allowed_keys=allowed_keys,
+            optional_keys=tuple(optional_keys),
+            context="real-stability telemetry",
+        )
 
     @staticmethod
     def _sanitize_bootstrap_runtime_task_cert_telemetry(
@@ -9720,17 +9761,12 @@ class TrainingLoop:
             "real_task_cert_alarm",
             "real_task_cert_recovery",
         )
-        if not telemetry:
-            return {}
-        sanitized: Dict[str, float] = {}
-        for key in allowed_keys:
-            if key not in telemetry:
-                continue
-            try:
-                sanitized[key] = float(telemetry.get(key, 0.0))
-            except Exception:
-                sanitized[key] = 0.0
-        return sanitized
+        return TrainingLoop._sanitize_numeric_telemetry_mapping(
+            telemetry,
+            allowed_keys=allowed_keys,
+            optional_keys=allowed_keys,
+            context="bootstrap runtime task-cert telemetry",
+        )
 
     def _capture_real_stability_certified_anchor(
         self,

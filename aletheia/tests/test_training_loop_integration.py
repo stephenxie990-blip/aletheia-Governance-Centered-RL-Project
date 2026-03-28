@@ -11536,6 +11536,21 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         self.assertAlmostEqual(real_behavior_action_switch_rate, 0.7, places=6)
         self.assertAlmostEqual(real_behavior_action_oscillation_rate, 0.45, places=6)
 
+    def test_sanitize_real_stability_telemetry_rejects_invalid_numeric_values(self):
+        with self.assertRaisesRegex(ValueError, "real-stability telemetry"):
+            TrainingLoop._sanitize_real_stability_telemetry(
+                {"real_task_cert_gate": "boom"}
+            )
+
+    def test_sanitize_bootstrap_runtime_task_cert_telemetry_rejects_nonfinite_values(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "bootstrap runtime task-cert telemetry",
+        ):
+            TrainingLoop._sanitize_bootstrap_runtime_task_cert_telemetry(
+                {"real_task_cert_state": float("nan")}
+            )
+
     def test_bootstrap_trigger_entry_contract_uses_real_task_degradation_even_without_reward_drop(self):
         mask = torch.ones((1, 2), dtype=torch.float32)
         zeros = torch.zeros_like(mask)
