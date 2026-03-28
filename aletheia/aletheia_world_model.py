@@ -7346,60 +7346,50 @@ class WorldModel(nn.Module):
         if wm_config is None or config is None:
             return
 
-        mode = str(validation_mode).lower()
-        if mode == "off":
-            return
+        del validation_mode
 
         dist = getattr(config, "distribution", None)
         if dist is None:
             return
 
-        def _handle(field: str, current: Any, desired: Any, target: Any) -> None:
+        def _handle(field: str, current: Any, desired: Any) -> None:
             if current == desired:
                 return
-            msg = (
+            raise ValueError(
                 f"RSSMConfig.{field} ({current}) != WorldModelConfig.{field} "
-                f"({desired}); "
+                f"({desired}); auto-alignment is no longer supported. "
+                "Fix the upstream configuration."
             )
-            if mode == "strict":
-                raise ValueError(
-                    msg + "auto-alignment is disabled in strict mode. "
-                    "Fix the upstream configuration."
-                )
-            warnings.warn(msg + "using WorldModelConfig value to align", UserWarning)
-            setattr(target, field, desired)
 
         for name in ("deter_dim", "obs_embed_dim"):
             value = getattr(wm_config, name, None)
             if value is None:
                 continue
-            _handle(name, getattr(config, name, None), value, config)
+            _handle(name, getattr(config, name, None), value)
 
         wm_num_classes = getattr(wm_config, "num_classes", None)
         if wm_num_classes is not None:
-            _handle("num_classes", dist.num_classes, int(wm_num_classes), dist)
+            _handle("num_classes", dist.num_classes, int(wm_num_classes))
 
         wm_stoch_dim = getattr(wm_config, "stoch_dim", None)
-        if wm_stoch_dim is None or dist.num_classes <= 0:
+        if wm_stoch_dim is None:
             return
 
-        desired_num_distributions = int(wm_stoch_dim) // int(dist.num_classes)
-        if desired_num_distributions <= 0:
-            desired_num_distributions = 1
-        if desired_num_distributions * int(dist.num_classes) != int(wm_stoch_dim):
-            msg = (
-                f"WorldModelConfig.stoch_dim ({wm_stoch_dim}) not divisible "
-                f"by num_classes ({dist.num_classes}); using floor division to align"
+        if int(dist.num_classes) <= 0:
+            raise ValueError(
+                f"RSSMConfig.num_classes must be positive to validate "
+                f"WorldModelConfig.stoch_dim ({wm_stoch_dim})"
             )
-            if mode == "strict":
-                raise ValueError(msg + " - fix upstream configuration.")
-            warnings.warn(msg, UserWarning)
-        _handle(
-            "num_distributions",
-            dist.num_distributions,
-            desired_num_distributions,
-            dist,
-        )
+
+        if int(wm_stoch_dim) % int(dist.num_classes) != 0:
+            raise ValueError(
+                f"WorldModelConfig.stoch_dim ({wm_stoch_dim}) not divisible "
+                f"by num_classes ({dist.num_classes}); auto-alignment is no longer "
+                "supported. Fix the upstream configuration."
+            )
+
+        desired_num_distributions = int(wm_stoch_dim) // int(dist.num_classes)
+        _handle("num_distributions", dist.num_distributions, desired_num_distributions)
 
     # =========================================================================
     # 配置解析

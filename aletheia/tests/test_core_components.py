@@ -945,6 +945,112 @@ class TestWorldModelBridgeContract(unittest.TestCase):
         self.assertGreater(float(loss_packet.total.detach().item()), 0.0)
 
 
+class TestWorldModelRssmAlignmentContracts(unittest.TestCase):
+    def _make_alignment_subject(
+        self,
+        *,
+        rssm_deter_dim: int = 8,
+        rssm_obs_embed_dim: int = 8,
+        rssm_num_distributions: int = 2,
+        rssm_num_classes: int = 4,
+        wm_deter_dim: int = 8,
+        wm_obs_embed_dim: int = 8,
+        wm_stoch_dim: int = 8,
+        wm_num_classes: int = 4,
+    ):
+        rssm_cfg = RSSMConfig(
+            vitals_dim=4,
+            deter_dim=rssm_deter_dim,
+            hidden_dim=16,
+            action_embed_dim=8,
+            obs_embed_dim=rssm_obs_embed_dim,
+            z_embed_dim=8,
+            distribution=DistributionConfig(
+                num_distributions=rssm_num_distributions,
+                num_classes=rssm_num_classes,
+                use_unimix=False,
+            ),
+            kl=KLConfig(free_nats=0.0),
+            continue_config=ContinueConfig(hidden_dims=[16]),
+            use_feature_norm=True,
+            use_separate_norm=False,
+            use_persist_gate=False,
+        )
+        wm_cfg = WorldModelConfig(
+            obs_embed_dim=wm_obs_embed_dim,
+            deter_dim=wm_deter_dim,
+            stoch_dim=wm_stoch_dim,
+            action_dim=2,
+            num_classes=wm_num_classes,
+        )
+        world_model = WorldModel.__new__(WorldModel)
+        world_model.config = rssm_cfg
+        world_model._wm_config = wm_cfg
+        return world_model, rssm_cfg, wm_cfg
+
+    def test_align_rssm_config_rejects_explicit_field_mismatch_across_validation_modes(self):
+        for validation_mode in ("strict", "warn", "off"):
+            with self.subTest(validation_mode=validation_mode):
+                world_model, _, _ = self._make_alignment_subject(
+                    rssm_deter_dim=10,
+                    wm_deter_dim=8,
+                )
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "auto-alignment is no longer supported",
+                ):
+                    WorldModel._align_rssm_config(
+                        world_model,
+                        validation_mode=validation_mode,
+                    )
+
+    def test_align_rssm_config_rejects_num_distribution_mismatch_across_validation_modes(self):
+        for validation_mode in ("strict", "warn", "off"):
+            with self.subTest(validation_mode=validation_mode):
+                world_model, _, _ = self._make_alignment_subject(
+                    rssm_num_distributions=3,
+                    wm_stoch_dim=8,
+                    wm_num_classes=4,
+                )
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "RSSMConfig.num_distributions",
+                ):
+                    WorldModel._align_rssm_config(
+                        world_model,
+                        validation_mode=validation_mode,
+                    )
+
+    def test_align_rssm_config_rejects_nondivisible_world_model_stoch_dim(self):
+        for validation_mode in ("strict", "warn", "off"):
+            with self.subTest(validation_mode=validation_mode):
+                world_model, _, _ = self._make_alignment_subject()
+                world_model._wm_config = SimpleNamespace(
+                    obs_embed_dim=8,
+                    deter_dim=8,
+                    stoch_dim=10,
+                    num_classes=4,
+                )
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "not divisible",
+                ):
+                    WorldModel._align_rssm_config(
+                        world_model,
+                        validation_mode=validation_mode,
+                    )
+
+    def test_align_rssm_config_allows_consistent_config(self):
+        world_model, rssm_cfg, _ = self._make_alignment_subject()
+
+        WorldModel._align_rssm_config(world_model, validation_mode="off")
+
+        self.assertEqual(int(rssm_cfg.deter_dim), 8)
+        self.assertEqual(int(rssm_cfg.obs_embed_dim), 8)
+        self.assertEqual(int(rssm_cfg.distribution.num_classes), 4)
+        self.assertEqual(int(rssm_cfg.distribution.num_distributions), 2)
+
+
 # =========================================================================
 # TEST-6: compute_lambda_returns & symlog/symexp 一致性
 # =========================================================================
