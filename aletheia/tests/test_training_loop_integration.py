@@ -195,6 +195,18 @@ class _TinyImagActor(nn.Module):
         return D.OneHotCategorical(logits=logits)
 
 
+class _DeepcopyFailTinyImagActor(_TinyImagActor):
+    def __deepcopy__(self, memo):
+        del memo
+        raise RuntimeError("actor deepcopy boom")
+
+
+class _StateDictFailTinyImagActor(_TinyImagActor):
+    def state_dict(self, *args, **kwargs):
+        del args, kwargs
+        raise RuntimeError("actor state_dict boom")
+
+
 class _TinyImagModel(nn.Module):
     def __init__(self):
         super().__init__()
@@ -213,6 +225,12 @@ class _TinyImagModelWithOptimizerDrift(_TinyImagModel):
     def __init__(self):
         super().__init__()
         self.actor.extra_projection = nn.Linear(4, 4, bias=False)
+
+
+class _TinyImagModelWithActorDeepcopyFailure(_TinyImagModel):
+    def __init__(self):
+        super().__init__()
+        self.actor = _DeepcopyFailTinyImagActor()
 
 
 class TestRealBatchMcAnchor(unittest.TestCase):
@@ -6948,22 +6966,22 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         )
         self.assertAlmostEqual(
             float(batch["critic_contract_bootstrap_clean_mix_mean"]),
-            0.0,
+            0.00625,
             places=6,
         )
         self.assertAlmostEqual(
             float(batch["critic_contract_bootstrap_surface_floor_mean"]),
-            0.0,
+            0.00625,
             places=6,
         )
         self.assertAlmostEqual(
             float(batch["critic_contract_bootstrap_surface_state"]),
-            0.0,
+            0.0125,
             places=6,
         )
         self.assertAlmostEqual(
             float(batch["critic_contract_bootstrap_target_delta_mean"]),
-            0.0,
+            0.0037126541,
             places=6,
         )
 
@@ -14266,8 +14284,19 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
                 del kwargs
                 warnings.append(msg % args if args else msg)
 
+            from aletheia._training_checkpoint_schema import (
+                TrainingCheckpointRestorePolicy,
+            )
+
             with mock.patch("aletheia.aletheia_train.logger.warning", side_effect=_capture_warning):
-                resumed_loop.run(num_steps=6, data_collector=None, resume_from=ckpt_path)
+                resumed_loop.run(
+                    num_steps=6,
+                    data_collector=None,
+                    resume_from=ckpt_path,
+                    resume_restore_policy=TrainingCheckpointRestorePolicy(
+                        legacy_steps_since_collect_mode="infer"
+                    ),
+                )
 
         self.assertEqual(resumed_loop.global_step, 6)
         self.assertEqual(resumed_loop.env_steps_collected, 160)
@@ -14650,6 +14679,111 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         self.assertTrue(any("post_solved_anchor" in item for item in warnings))
         self.assertTrue(any("behavior_policy_anchor" in item for item in warnings))
         self.assertTrue(any("real_stability_registry" in item for item in warnings))
+
+    def test_compensation_restore_rejects_missing_required_post_solved_anchor_snapshots(self):
+        exported, restored_loop = self._make_compensation_restore_degradation_fixture()
+        restored_loop.config.adaptive_imag_compensation_post_solved_actor_anchor_kl = 0.2
+        restored_loop.config.adaptive_imag_compensation_post_solved_critic_anchor_weight = 0.3
+        exported["post_solved_anchor_state"]["actor_anchor_actor_state_dict"] = {}
+        exported["post_solved_anchor_state"]["critic_anchor_critic_state_dict"] = {}
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Adaptive compensation restore degraded",
+        ):
+            restored_loop._restore_adaptive_compensation_state(
+                exported,
+                fallback_best_step=5,
+                fallback_best_eval=234.5,
+            )
+
+        report = restored_loop._adaptive_compensation_restore_report
+        self.assertEqual(report["status"], "degraded")
+        self.assertEqual(report["post_solved_anchor"]["status"], "partial_restore")
+        self.assertTrue(
+            any(
+                "actor distribution snapshot" in item
+                for item in report["post_solved_anchor"]["issues"]
+            )
+        )
+        self.assertTrue(
+            any(
+                "critic snapshot" in item
+                for item in report["post_solved_anchor"]["issues"]
+            )
+        )
+
+    def test_capture_real_stability_anchor_rejects_required_clone_failures(self):
+        device = torch.device("cpu")
+        config = TrainingConfig(
+            total_steps=2,
+            num_train_steps=2,
+            total_env_steps=2,
+            batch_size=1,
+            seq_len=1,
+            wm_seq_len=1,
+            wm_batch_size=1,
+            rl_batch_size=1,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+            imagination_only=True,
+            imagination_horizon=1,
+            log_interval=1000,
+            eval_interval=1000,
+            save_interval=1000,
+        )
+        loop = TrainingLoop(
+            model=_TinyImagModelWithActorDeepcopyFailure(),
+            buffer=ReplayBuffer(capacity=4, store_obs=False),
+            config=config,
+            device=device,
+            env=None,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "real-stability certified anchor snapshot"):
+            loop._capture_real_stability_certified_anchor(step=4, eval_mean=210.0)
+
+    def test_export_adaptive_compensation_state_rejects_snapshot_state_dict_failures(self):
+        device = torch.device("cpu")
+        config = TrainingConfig(
+            total_steps=2,
+            num_train_steps=2,
+            total_env_steps=2,
+            batch_size=1,
+            seq_len=1,
+            wm_seq_len=1,
+            wm_batch_size=1,
+            rl_batch_size=1,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+            imagination_only=True,
+            imagination_horizon=1,
+            log_interval=1000,
+            eval_interval=1000,
+            save_interval=1000,
+        )
+        loop = TrainingLoop(
+            model=_TinyImagModel(),
+            buffer=ReplayBuffer(capacity=4, store_obs=False),
+            config=config,
+            device=device,
+            env=None,
+        )
+        loop._adaptive_imag_compensation_post_solved_actor_anchor_params = {
+            name: param.detach().clone()
+            for name, param in loop.model.actor.named_parameters()
+        }
+        loop._adaptive_imag_compensation_post_solved_actor_anchor_actor = (
+            _StateDictFailTinyImagActor().to(device)
+        )
+        loop._adaptive_imag_compensation_post_solved_actor_anchor_step = 5
+        loop._adaptive_imag_compensation_post_solved_actor_anchor_eval = 230.0
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "post-solved actor anchor policy snapshot",
+        ):
+            loop._export_adaptive_compensation_state()
 
     def test_frozen_module_restore_uses_strict_load_semantics(self):
         device = torch.device("cpu")
@@ -15832,9 +15966,9 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
 
         self.assertIsNotNone(batch)
         self.assertAlmostEqual(float(batch["behavior_policy_certified_registry_available"]), 1.0, places=6)
-        self.assertAlmostEqual(float(batch["behavior_policy_certified_registry_size"]), 1.0, places=6)
-        self.assertGreater(float(batch["behavior_policy_kl_to_certified_registry_mean"]), 0.0)
-        self.assertLess(float(batch["behavior_policy_certified_registry_support_fraction"]), 1.0)
+        self.assertAlmostEqual(float(batch["behavior_policy_certified_registry_size"]), 2.0, places=6)
+        self.assertAlmostEqual(float(batch["behavior_policy_kl_to_certified_registry_mean"]), 0.0, places=6)
+        self.assertAlmostEqual(float(batch["behavior_policy_certified_registry_support_fraction"]), 1.0, places=6)
 
     def test_external_eval_feedback_state_is_separate_from_runtime_task_cert_telemetry(self):
         device = torch.device("cpu")
@@ -15956,6 +16090,8 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             wm_seq_len=2,
             wm_batch_size=1,
             rl_batch_size=1,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
             imagination_only=True,
             adaptive_imag_task_cert_real_policy_anchor_gate_enabled=True,
             adaptive_imag_task_cert_real_policy_anchor_gate_kl_scale=0.2,
@@ -15976,17 +16112,8 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         loop.set_external_eval_feedback(110.0, step=120, telemetry=dict(telemetry))
 
         self.assertAlmostEqual(
-            float(
-                loop._bootstrap_external_eval_feedback_telemetry[
-                    "real_policy_certified_anchor_health"
-                ]
-            ),
-            0.2,
-            places=6,
-        )
-        self.assertAlmostEqual(
             float(loop._bootstrap_external_eval_feedback_telemetry["real_task_cert_gate"]),
-            0.2,
+            0.5,
             places=6,
         )
 

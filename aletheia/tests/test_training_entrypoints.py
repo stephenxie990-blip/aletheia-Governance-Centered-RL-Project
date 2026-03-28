@@ -255,6 +255,59 @@ class _DummyModelPrecomputedSlowTargetFailure(nn.Module):
         return dist, value
 
 
+class _AnchorCaptureActor(nn.Module):
+    def __init__(self, feat_dim: int, action_dim: int):
+        super().__init__()
+        self.net = nn.Linear(feat_dim, action_dim)
+        self.is_discrete = False
+
+    def forward(self, feat, temperature: float = 1.0, intent=None):
+        del temperature, intent
+        mu = self.net(feat)
+        return D.Normal(mu, torch.ones_like(mu))
+
+
+class _DeepcopyFailAnchorActor(_AnchorCaptureActor):
+    def __deepcopy__(self, memo):
+        del memo
+        raise RuntimeError("actor deepcopy boom")
+
+
+class _DeepcopyFailAnchorCritic(_FlatCritic):
+    def __deepcopy__(self, memo):
+        del memo
+        raise RuntimeError("critic deepcopy boom")
+
+
+class _DummyModelAnchorCapture(nn.Module):
+    def __init__(
+        self,
+        vital_dim: int,
+        action_dim: int,
+        device: torch.device,
+        *,
+        fail_actor_clone: bool = False,
+        fail_critic_clone: bool = False,
+    ):
+        super().__init__()
+        self.world_model = _DummyWorldModel(device)
+        self.actor = (
+            _DeepcopyFailAnchorActor(vital_dim, action_dim)
+            if fail_actor_clone
+            else _AnchorCaptureActor(vital_dim, action_dim)
+        )
+        self.critic = (
+            _DeepcopyFailAnchorCritic(vital_dim)
+            if fail_critic_clone
+            else _FlatCritic(vital_dim)
+        )
+
+    def forward(self, vitals, temperature: float = 1.0, intent=None):
+        dist = self.actor(vitals, temperature=temperature, intent=intent)
+        value = self.critic(vitals)
+        return dist, value
+
+
 class _DummyModelRecordingCritic(nn.Module):
     def __init__(self, vital_dim: int, action_dim: int, device: torch.device):
         super().__init__()
@@ -1771,6 +1824,75 @@ class TestTrainingEntryPoints(unittest.TestCase):
         self.assertEqual(model.critic.target_calls, 0)
         self.assertAlmostEqual(float(metrics["critic/slow_reg"]), 0.0, places=6)
         self.assertAlmostEqual(float(metrics["critic/slow_reg_weight"]), 0.0, places=6)
+
+    def test_training_step_rejects_required_post_solved_actor_anchor_clone_failures(self):
+        device = torch.device("cpu")
+        config = TrainingConfig()
+        config.adaptive_imag_compensation_post_solved_actor_anchor_kl = 0.2
+        model = _DummyModelAnchorCapture(
+            4,
+            2,
+            device,
+            fail_actor_clone=True,
+        ).to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        stepper = TrainingStep(
+            model=model,
+            opt_bundle=_single_rl_opt_bundle(optimizer),
+            config=config,
+            device=device,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "post-solved actor anchor policy snapshot"):
+            stepper._capture_post_solved_actor_anchor(step=5, eval_mean=10.0)
+
+    def test_training_step_rejects_required_post_solved_critic_anchor_clone_failures(self):
+        device = torch.device("cpu")
+        config = TrainingConfig()
+        config.adaptive_imag_compensation_post_solved_critic_anchor_weight = 0.3
+        model = _DummyModelAnchorCapture(
+            4,
+            2,
+            device,
+            fail_critic_clone=True,
+        ).to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        stepper = TrainingStep(
+            model=model,
+            opt_bundle=_single_rl_opt_bundle(optimizer),
+            config=config,
+            device=device,
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "post-solved critic anchor snapshot"):
+            stepper._capture_post_solved_actor_anchor(step=5, eval_mean=10.0)
+
+    def test_training_step_allows_pull_only_post_solved_anchor_without_policy_clone(self):
+        device = torch.device("cpu")
+        config = TrainingConfig()
+        config.adaptive_imag_compensation_post_solved_actor_anchor_pull = 0.4
+        model = _DummyModelAnchorCapture(
+            4,
+            2,
+            device,
+            fail_actor_clone=True,
+        ).to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        stepper = TrainingStep(
+            model=model,
+            opt_bundle=_single_rl_opt_bundle(optimizer),
+            config=config,
+            device=device,
+        )
+
+        stepper._capture_post_solved_actor_anchor(step=5, eval_mean=10.0)
+
+        self.assertTrue(
+            bool(stepper._adaptive_imag_compensation_post_solved_actor_anchor_params)
+        )
+        self.assertIsNone(
+            stepper._adaptive_imag_compensation_post_solved_actor_anchor_actor
+        )
 
     def test_target_value_consistency_penalty_contributes_to_world_model_update(self):
         device = torch.device("cpu")

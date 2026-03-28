@@ -764,7 +764,8 @@ def export_adaptive_compensation_state(runtime: Any) -> Dict[str, Any]:
                 runtime._adaptive_imag_compensation_post_solved_actor_anchor_params
             ),
             "actor_anchor_actor_state_dict": runtime._module_state_dict_to_cpu(
-                runtime._adaptive_imag_compensation_post_solved_actor_anchor_actor
+                runtime._adaptive_imag_compensation_post_solved_actor_anchor_actor,
+                context="post-solved actor anchor policy snapshot",
             ),
             "actor_anchor_step": int(
                 runtime._adaptive_imag_compensation_post_solved_actor_anchor_step
@@ -773,7 +774,8 @@ def export_adaptive_compensation_state(runtime: Any) -> Dict[str, Any]:
                 runtime._adaptive_imag_compensation_post_solved_actor_anchor_eval
             ),
             "critic_anchor_critic_state_dict": runtime._module_state_dict_to_cpu(
-                runtime._adaptive_imag_compensation_post_solved_critic_anchor_critic
+                runtime._adaptive_imag_compensation_post_solved_critic_anchor_critic,
+                context="post-solved critic anchor snapshot",
             ),
             "critic_anchor_step": int(
                 runtime._adaptive_imag_compensation_post_solved_critic_anchor_step
@@ -784,7 +786,8 @@ def export_adaptive_compensation_state(runtime: Any) -> Dict[str, Any]:
         },
         "behavior_policy_eval_anchor_state": {
             "actor_state_dict": runtime._module_state_dict_to_cpu(
-                runtime._behavior_policy_eval_anchor_actor
+                runtime._behavior_policy_eval_anchor_actor,
+                context="behavior-policy eval anchor snapshot",
             ),
             "step": int(runtime._behavior_policy_eval_anchor_step),
             "eval": float(runtime._behavior_policy_eval_anchor_eval),
@@ -820,7 +823,10 @@ def export_adaptive_compensation_state(runtime: Any) -> Dict[str, Any]:
                 "step": int(step),
                 "eval": float(eval_mean),
                 "telemetry": dict(runtime._sanitize_real_stability_telemetry(telemetry)),
-                "actor_state_dict": runtime._module_state_dict_to_cpu(actor),
+                "actor_state_dict": runtime._module_state_dict_to_cpu(
+                    actor,
+                    context="real-stability certified registry actor snapshot",
+                ),
             }
             for actor, step, eval_mean, telemetry in zip(
                 runtime._real_stability_certified_anchor_registry_actors,

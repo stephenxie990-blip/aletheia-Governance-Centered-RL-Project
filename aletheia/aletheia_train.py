@@ -3428,6 +3428,236 @@ def compute_policy_outputs(
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+def _clone_frozen_module_to_device(
+    module: Optional[nn.Module],
+    device: torch.device,
+) -> Optional[nn.Module]:
+    if module is None or not callable(module):
+        return None
+    frozen_module = copy.deepcopy(module).to(device)
+    frozen_module.eval()
+    for param in frozen_module.parameters():
+        param.requires_grad_(False)
+    return frozen_module
+
+
+def _resolve_post_solved_anchor_capture_threshold(config: TrainingConfig) -> float:
+    threshold = float(
+        getattr(
+            config,
+            "adaptive_imag_compensation_post_solved_actor_anchor_eval_threshold",
+            0.0,
+        )
+    )
+    if threshold <= 0.0:
+        threshold = max(
+            float(
+                getattr(
+                    config,
+                    "adaptive_imag_compensation_post_solved_eval_threshold",
+                    0.0,
+                )
+            ),
+            float(
+                getattr(
+                    config,
+                    "adaptive_imag_compensation_persistence_eval_threshold",
+                    0.0,
+                )
+            ),
+        )
+    return threshold
+
+
+def _post_solved_actor_anchor_params_required(config: TrainingConfig) -> bool:
+    return max(
+        0.0,
+        float(
+            getattr(
+                config,
+                "adaptive_imag_compensation_post_solved_actor_anchor_pull",
+                0.0,
+            )
+        ),
+        float(
+            getattr(
+                config,
+                "adaptive_imag_compensation_post_solved_actor_anchor_hard_pull",
+                0.0,
+            )
+        ),
+        float(
+            getattr(
+                config,
+                "adaptive_imag_compensation_post_solved_actor_anchor_latched_pull",
+                0.0,
+            )
+        ),
+        float(
+            getattr(
+                config,
+                "adaptive_imag_compensation_post_solved_actor_anchor_highwater_pull",
+                0.0,
+            )
+        ),
+    ) > 0.0
+
+
+def _post_solved_actor_anchor_policy_required(config: TrainingConfig) -> bool:
+    return max(
+        0.0,
+        float(
+            getattr(
+                config,
+                "adaptive_imag_compensation_post_solved_actor_anchor_kl",
+                0.0,
+            )
+        ),
+        float(
+            getattr(
+                config,
+                "adaptive_imag_compensation_post_solved_actor_anchor_latched_kl",
+                0.0,
+            )
+        ),
+        float(
+            getattr(
+                config,
+                "adaptive_imag_compensation_post_solved_actor_anchor_highwater_kl",
+                0.0,
+            )
+        ),
+        float(
+            getattr(
+                config,
+                "adaptive_imag_compensation_post_solved_real_actor_anchor_kl",
+                0.0,
+            )
+        ),
+    ) > 0.0
+
+
+def _post_solved_critic_anchor_required(config: TrainingConfig) -> bool:
+    return (
+        float(
+            getattr(
+                config,
+                "adaptive_imag_compensation_post_solved_critic_anchor_weight",
+                0.0,
+            )
+        )
+        > 0.0
+    )
+
+
+def _export_module_state_dict_to_cpu(
+    module: Optional[nn.Module],
+    *,
+    context: str = "module snapshot",
+) -> Dict[str, Any]:
+    if module is None or not hasattr(module, "state_dict"):
+        return {}
+    try:
+        raw_state = module.state_dict()
+    except Exception as exc:
+        raise RuntimeError(f"Failed to export {context}: {exc}") from exc
+    state_dict: Dict[str, Any] = {}
+    for key, value in raw_state.items():
+        if isinstance(value, Tensor):
+            state_dict[str(key)] = value.detach().cpu().clone()
+        else:
+            state_dict[str(key)] = copy.deepcopy(value)
+    return state_dict
+
+
+def _capture_post_solved_anchor_snapshot(
+    runtime: Any,
+    *,
+    step: int,
+    eval_mean: float,
+    sync_training_step: bool = False,
+) -> None:
+    actor = getattr(runtime.model, "actor", None)
+    params_required = _post_solved_actor_anchor_params_required(runtime.config)
+    policy_required = _post_solved_actor_anchor_policy_required(runtime.config)
+    critic_required = _post_solved_critic_anchor_required(runtime.config)
+    if actor is None or not hasattr(actor, "named_parameters"):
+        if params_required or policy_required:
+            raise RuntimeError(
+                "Required post-solved actor anchor snapshot could not be captured: "
+                "actor is unavailable"
+            )
+        return
+    threshold = _resolve_post_solved_anchor_capture_threshold(runtime.config)
+    if threshold > 0.0 and float(eval_mean) < threshold:
+        return
+
+    anchor_params: Dict[str, Tensor] = {}
+    try:
+        for name, param in actor.named_parameters():
+            anchor_params[name] = param.detach().clone()
+    except Exception as exc:
+        if params_required:
+            raise RuntimeError(
+                "Required post-solved actor anchor parameter snapshot "
+                f"could not be captured: {exc}"
+            ) from exc
+        anchor_params = {}
+    if not anchor_params and params_required:
+        raise RuntimeError(
+            "Required post-solved actor anchor parameter snapshot could not be captured"
+        )
+
+    anchor_actor: Optional[nn.Module] = None
+    try:
+        anchor_actor = _clone_frozen_module_to_device(actor, runtime.device)
+    except Exception as exc:
+        if policy_required:
+            raise RuntimeError(
+                "Required post-solved actor anchor policy snapshot "
+                f"could not be captured: {exc}"
+            ) from exc
+        anchor_actor = None
+    if anchor_actor is None and policy_required:
+        raise RuntimeError(
+            "Required post-solved actor anchor policy snapshot could not be captured"
+        )
+
+    anchor_critic: Optional[nn.Module] = None
+    critic = getattr(runtime.model, "critic", None)
+    if critic is not None and callable(critic):
+        try:
+            anchor_critic = _clone_frozen_module_to_device(critic, runtime.device)
+        except Exception as exc:
+            if critic_required:
+                raise RuntimeError(
+                    "Required post-solved critic anchor snapshot "
+                    f"could not be captured: {exc}"
+                ) from exc
+            anchor_critic = None
+    if anchor_critic is None and critic_required:
+        raise RuntimeError(
+            "Required post-solved critic anchor snapshot could not be captured"
+        )
+
+    if not anchor_params and anchor_actor is None and anchor_critic is None:
+        return
+
+    runtime._adaptive_imag_compensation_post_solved_actor_anchor_params = anchor_params
+    runtime._adaptive_imag_compensation_post_solved_actor_anchor_actor = anchor_actor
+    runtime._adaptive_imag_compensation_post_solved_actor_anchor_step = int(step)
+    runtime._adaptive_imag_compensation_post_solved_actor_anchor_eval = float(eval_mean)
+    runtime._adaptive_imag_compensation_post_solved_critic_anchor_critic = anchor_critic
+    runtime._adaptive_imag_compensation_post_solved_critic_anchor_step = (
+        int(step) if anchor_critic is not None else -1
+    )
+    runtime._adaptive_imag_compensation_post_solved_critic_anchor_eval = (
+        float(eval_mean) if anchor_critic is not None else -float("inf")
+    )
+    if sync_training_step and hasattr(runtime, "_sync_training_step_post_solved_anchor_state"):
+        runtime._sync_training_step_post_solved_anchor_state()
+
+
 class TrainingStep:
     """Encapsulates a single training step: world-model + PPO epochs.
 
@@ -3494,47 +3724,11 @@ class TrainingStep:
         self.global_step: int = 0
 
     def _capture_post_solved_actor_anchor(self, *, step: int, eval_mean: float) -> None:
-        actor = getattr(self.model, "actor", None)
-        if actor is None or not hasattr(actor, "named_parameters"):
-            return
-        threshold = float(getattr(self.config, "adaptive_imag_compensation_post_solved_actor_anchor_eval_threshold", 0.0))
-        if threshold <= 0.0:
-            threshold = max(
-                float(getattr(self.config, "adaptive_imag_compensation_post_solved_eval_threshold", 0.0)),
-                float(getattr(self.config, "adaptive_imag_compensation_persistence_eval_threshold", 0.0)),
-            )
-        if threshold > 0.0 and float(eval_mean) < threshold:
-            return
-        anchor_params: Dict[str, Tensor] = {}
-        for name, param in actor.named_parameters():
-            anchor_params[name] = param.detach().clone()
-        if not anchor_params:
-            return
-        anchor_actor: Optional[nn.Module] = None
-        try:
-            anchor_actor = copy.deepcopy(actor).to(self.device)
-            anchor_actor.eval()
-            for param in anchor_actor.parameters():
-                param.requires_grad_(False)
-        except Exception:
-            anchor_actor = None
-        anchor_critic: Optional[nn.Module] = None
-        critic = getattr(self.model, "critic", None)
-        if critic is not None and callable(critic):
-            try:
-                anchor_critic = copy.deepcopy(critic).to(self.device)
-                anchor_critic.eval()
-                for param in anchor_critic.parameters():
-                    param.requires_grad_(False)
-            except Exception:
-                anchor_critic = None
-        self._adaptive_imag_compensation_post_solved_actor_anchor_params = anchor_params
-        self._adaptive_imag_compensation_post_solved_actor_anchor_actor = anchor_actor
-        self._adaptive_imag_compensation_post_solved_actor_anchor_step = int(step)
-        self._adaptive_imag_compensation_post_solved_actor_anchor_eval = float(eval_mean)
-        self._adaptive_imag_compensation_post_solved_critic_anchor_critic = anchor_critic
-        self._adaptive_imag_compensation_post_solved_critic_anchor_step = int(step) if anchor_critic is not None else -1
-        self._adaptive_imag_compensation_post_solved_critic_anchor_eval = float(eval_mean) if anchor_critic is not None else -float("inf")
+        _capture_post_solved_anchor_snapshot(
+            self,
+            step=int(step),
+            eval_mean=float(eval_mean),
+        )
 
     def _is_post_solved_highwater_active(
         self,
@@ -8876,49 +9070,12 @@ class TrainingLoop:
                 )
 
     def _capture_post_solved_actor_anchor(self, *, step: int, eval_mean: float) -> None:
-        actor = getattr(self.model, "actor", None)
-        if actor is None or not hasattr(actor, "named_parameters"):
-            return
-        threshold = float(getattr(self.config, "adaptive_imag_compensation_post_solved_actor_anchor_eval_threshold", 0.0))
-        if threshold <= 0.0:
-            threshold = max(
-                float(getattr(self.config, "adaptive_imag_compensation_post_solved_eval_threshold", 0.0)),
-                float(getattr(self.config, "adaptive_imag_compensation_persistence_eval_threshold", 0.0)),
-            )
-        if threshold > 0.0 and float(eval_mean) < threshold:
-            return
-        anchor_params: Dict[str, Tensor] = {}
-        for name, param in actor.named_parameters():
-            anchor_params[name] = param.detach().clone()
-        if not anchor_params:
-            return
-        anchor_actor: Optional[nn.Module] = None
-        try:
-            anchor_actor = copy.deepcopy(actor).to(self.device)
-            anchor_actor.eval()
-            for param in anchor_actor.parameters():
-                param.requires_grad_(False)
-        except Exception:
-            anchor_actor = None
-        anchor_critic: Optional[nn.Module] = None
-        critic = getattr(self.model, "critic", None)
-        if critic is not None and callable(critic):
-            try:
-                anchor_critic = copy.deepcopy(critic).to(self.device)
-                anchor_critic.eval()
-                for param in anchor_critic.parameters():
-                    param.requires_grad_(False)
-            except Exception:
-                anchor_critic = None
-        self._adaptive_imag_compensation_post_solved_actor_anchor_params = anchor_params
-        self._adaptive_imag_compensation_post_solved_actor_anchor_actor = anchor_actor
-        self._adaptive_imag_compensation_post_solved_actor_anchor_step = int(step)
-        self._adaptive_imag_compensation_post_solved_actor_anchor_eval = float(eval_mean)
-        self._adaptive_imag_compensation_post_solved_critic_anchor_critic = anchor_critic
-        self._adaptive_imag_compensation_post_solved_critic_anchor_step = int(step) if anchor_critic is not None else -1
-        self._adaptive_imag_compensation_post_solved_critic_anchor_eval = float(eval_mean) if anchor_critic is not None else -float("inf")
-        if getattr(self, "training_step", None) is not None and hasattr(self.training_step, "_capture_post_solved_actor_anchor"):
-            self.training_step._capture_post_solved_actor_anchor(step=int(step), eval_mean=float(eval_mean))
+        _capture_post_solved_anchor_snapshot(
+            self,
+            step=int(step),
+            eval_mean=float(eval_mean),
+            sync_training_step=True,
+        )
 
     def _capture_behavior_policy_eval_anchor(
         self,
@@ -8954,29 +9111,18 @@ class TrainingLoop:
         if module is None or not callable(module):
             return None
         try:
-            frozen_module = copy.deepcopy(module).to(self.device)
-            frozen_module.eval()
-            for param in frozen_module.parameters():
-                param.requires_grad_(False)
+            frozen_module = _clone_frozen_module_to_device(module, self.device)
         except Exception:
             return None
         return frozen_module
 
     @staticmethod
-    def _module_state_dict_to_cpu(module: Optional[nn.Module]) -> Dict[str, Any]:
-        if module is None or not hasattr(module, "state_dict"):
-            return {}
-        state_dict: Dict[str, Any] = {}
-        try:
-            raw_state = module.state_dict()
-        except Exception:
-            return {}
-        for key, value in raw_state.items():
-            if isinstance(value, Tensor):
-                state_dict[str(key)] = value.detach().cpu().clone()
-            else:
-                state_dict[str(key)] = copy.deepcopy(value)
-        return state_dict
+    def _module_state_dict_to_cpu(
+        module: Optional[nn.Module],
+        *,
+        context: str = "module snapshot",
+    ) -> Dict[str, Any]:
+        return _export_module_state_dict_to_cpu(module, context=context)
 
     def _load_frozen_actor_from_state_dict(
         self,
@@ -9186,36 +9332,66 @@ class TrainingLoop:
             }
             report["actor_anchor_params_restored"] = True
 
+        required_issues: list[str] = []
         if (
+            _post_solved_actor_anchor_params_required(self.config)
+            and not self._adaptive_imag_compensation_post_solved_actor_anchor_params
+        ):
+            required_issues.append(
+                "post_solved actor parameter snapshot required by current config is missing"
+            )
+        if (
+            _post_solved_actor_anchor_policy_required(self.config)
+            and actor_anchor_actor is None
+        ):
+            required_issues.append(
+                "post_solved actor distribution snapshot required by current config is missing"
+            )
+        if (
+            _post_solved_critic_anchor_required(self.config)
+            and critic_anchor_critic is None
+        ):
+            required_issues.append(
+                "post_solved critic snapshot required by current config is missing"
+            )
+        if required_issues:
+            report["issues"].extend(required_issues)
+
+        restored_any = bool(
             self._adaptive_imag_compensation_post_solved_actor_anchor_params
             or actor_anchor_actor is not None
             or critic_anchor_critic is not None
+        )
+        if (
+            restored_any
+            or required_issues
         ):
-            self._adaptive_imag_compensation_post_solved_actor_anchor_actor = (
-                actor_anchor_actor
-            )
-            self._adaptive_imag_compensation_post_solved_actor_anchor_step = int(
-                anchor_state.get("actor_anchor_step", fallback_best_step)
-            )
-            self._adaptive_imag_compensation_post_solved_actor_anchor_eval = float(
-                anchor_state.get("actor_anchor_eval", fallback_best_eval)
-            )
-            self._adaptive_imag_compensation_post_solved_critic_anchor_critic = (
-                critic_anchor_critic
-            )
-            self._adaptive_imag_compensation_post_solved_critic_anchor_step = int(
-                anchor_state.get(
-                    "critic_anchor_step",
-                    self._adaptive_imag_compensation_post_solved_actor_anchor_step,
+            if restored_any:
+                self._adaptive_imag_compensation_post_solved_actor_anchor_actor = (
+                    actor_anchor_actor
                 )
-            )
-            self._adaptive_imag_compensation_post_solved_critic_anchor_eval = float(
-                anchor_state.get(
-                    "critic_anchor_eval",
-                    self._adaptive_imag_compensation_post_solved_actor_anchor_eval,
+                self._adaptive_imag_compensation_post_solved_actor_anchor_step = int(
+                    anchor_state.get("actor_anchor_step", fallback_best_step)
                 )
-            )
-            self._sync_training_step_post_solved_anchor_state()
+                self._adaptive_imag_compensation_post_solved_actor_anchor_eval = float(
+                    anchor_state.get("actor_anchor_eval", fallback_best_eval)
+                )
+                self._adaptive_imag_compensation_post_solved_critic_anchor_critic = (
+                    critic_anchor_critic
+                )
+                self._adaptive_imag_compensation_post_solved_critic_anchor_step = int(
+                    anchor_state.get(
+                        "critic_anchor_step",
+                        self._adaptive_imag_compensation_post_solved_actor_anchor_step,
+                    )
+                )
+                self._adaptive_imag_compensation_post_solved_critic_anchor_eval = float(
+                    anchor_state.get(
+                        "critic_anchor_eval",
+                        self._adaptive_imag_compensation_post_solved_actor_anchor_eval,
+                    )
+                )
+                self._sync_training_step_post_solved_anchor_state()
             report["status"] = (
                 "restored" if not report["issues"] else "partial_restore"
             )
@@ -9534,9 +9710,19 @@ class TrainingLoop:
         step: int,
         eval_mean: float,
     ) -> None:
-        anchor_actor = self._clone_frozen_actor()
+        actor = getattr(self.model, "actor", None)
+        try:
+            anchor_actor = _clone_frozen_module_to_device(actor, self.device)
+        except Exception as exc:
+            raise RuntimeError(
+                "Failed to capture real-stability certified anchor snapshot: "
+                f"{exc}"
+            ) from exc
         if anchor_actor is None:
-            return
+            raise RuntimeError(
+                "Failed to capture real-stability certified anchor snapshot: "
+                "actor clone is unavailable"
+            )
         sanitized_telemetry = self._sanitize_real_stability_telemetry(
             getattr(self, "_real_stability_last_telemetry", {})
         )
