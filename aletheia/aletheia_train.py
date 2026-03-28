@@ -5622,8 +5622,12 @@ class TrainingStep:
                 slow_reg_scale = 1.0
                 slow_gap_mean_value = None
                 slow_gap_abs_mean_value = None
-                try:
-                    if hasattr(self.model, "critic") and self.model.critic is not None:
+                if slow_value_reg_weight > 0.0:
+                    try:
+                        if not hasattr(self.model, "critic") or self.model.critic is None:
+                            raise RuntimeError(
+                                "critic module is unavailable while slow-target regularization is enabled"
+                            )
                         slow_raw = self.model.critic(critic_inputs_slow, use_target=True)
                         slow_val = extract_real_value(slow_raw)
                         if slow_val.shape != val.shape:
@@ -5650,12 +5654,10 @@ class TrainingStep:
                             reduction="none",
                         )
                         slow_reg = slow_value_reg_weight * slow_reg_scale * (weights.detach() * per_slow).mean()
-                except Exception:
-                    slow_reg = _get_zero_tensor(self.device)
-                    slow_val_raw = None
-                    slow_reg_scale = 1.0
-                    slow_gap_mean_value = None
-                    slow_gap_abs_mean_value = None
+                    except Exception as exc:
+                        raise RuntimeError(
+                            f"Slow-target regularization failed: {exc}"
+                        ) from exc
 
                 target_ruler_distill = _get_zero_tensor(self.device)
                 target_ruler_distill_weight = 0.0

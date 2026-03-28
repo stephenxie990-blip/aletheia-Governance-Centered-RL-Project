@@ -140,6 +140,18 @@ class _TargetGapCritic(_FlatCritic):
         return out
 
 
+class _ExplodingTargetCritic(_FlatCritic):
+    def __init__(self, feat_dim: int):
+        super().__init__(feat_dim)
+        self.target_calls = 0
+
+    def forward(self, x, use_target: bool = False):
+        if use_target:
+            self.target_calls += 1
+            raise RuntimeError("slow target boom")
+        return super().forward(x, use_target=use_target)
+
+
 class _RecordingCritic(nn.Module):
     def __init__(self, feat_dim: int, fixed_loss: float = 3.25):
         super().__init__()
@@ -220,6 +232,21 @@ class _DummyModelPrecomputedDrift(nn.Module):
         self.world_model = _DummyWorldModel(device)
         self.actor = SimpleNamespace(is_discrete=False)
         self.critic = _TargetGapCritic(vital_dim, target_shift=target_shift)
+
+    def forward(self, vitals, temperature: float = 1.0, intent=None):
+        mu = self.fc(vitals)
+        dist = D.Normal(mu, torch.ones_like(mu))
+        value = self.critic(vitals)
+        return dist, value
+
+
+class _DummyModelPrecomputedSlowTargetFailure(nn.Module):
+    def __init__(self, vital_dim: int, action_dim: int, device: torch.device):
+        super().__init__()
+        self.fc = nn.Linear(vital_dim, action_dim)
+        self.world_model = _DummyWorldModel(device)
+        self.actor = SimpleNamespace(is_discrete=False)
+        self.critic = _ExplodingTargetCritic(vital_dim)
 
     def forward(self, vitals, temperature: float = 1.0, intent=None):
         mu = self.fc(vitals)
@@ -1644,6 +1671,81 @@ class TestTrainingEntryPoints(unittest.TestCase):
         self.assertGreater(float(metrics["critic/slow_reg_scale"]), 1.0)
         self.assertGreater(float(metrics["critic/slow_value_gap_abs_mean"]), 1.0)
         self.assertGreater(float(metrics["actor/drift_guard_triggered"]), 0.0)
+
+    def test_training_step_rejects_slow_target_regularization_failures(self):
+        device = torch.device("cpu")
+        config = TrainingConfig()
+        config.rl.use_value_normalization = False
+        config.rl.slow_value_reg_weight = 1.0
+        model = _DummyModelPrecomputedSlowTargetFailure(4, 2, device).to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        stepper = TrainingStep(
+            model=model,
+            opt_bundle=_single_rl_opt_bundle(optimizer),
+            config=config,
+            device=device,
+        )
+
+        torch.manual_seed(5)
+        B, T, D, A = 2, 3, 4, 2
+        policy_features = torch.randn(B, T, D, device=device)
+        batch = {
+            "vitals": policy_features,
+            "policy_features": policy_features,
+            "use_precomputed_policy_outputs": True,
+            "actions": torch.randn(B, T, A, device=device),
+            "rewards": torch.randn(B, T, device=device),
+            "dones": torch.zeros(B, T, device=device),
+            "log_probs": torch.zeros(B, T, device=device),
+            "entropy": torch.zeros(B, T, device=device),
+            "advantages": torch.zeros(B, T, device=device),
+            "returns": torch.ones(B, T, device=device),
+            "target_actor": torch.ones(B, T, device=device),
+            "base_actor": torch.zeros(B, T, device=device),
+            "weights_actor": torch.ones(B, T, device=device),
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "Slow-target regularization failed"):
+            stepper.run_step(batch=batch, rl_batch=batch, wm_batch=batch, source_tag="imag")
+
+    def test_training_step_skips_slow_target_regularization_when_disabled(self):
+        device = torch.device("cpu")
+        config = TrainingConfig()
+        config.rl.use_value_normalization = False
+        config.rl.slow_value_reg_weight = 0.0
+        model = _DummyModelPrecomputedSlowTargetFailure(4, 2, device).to(device)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+        stepper = TrainingStep(
+            model=model,
+            opt_bundle=_single_rl_opt_bundle(optimizer),
+            config=config,
+            device=device,
+        )
+
+        torch.manual_seed(6)
+        B, T, D, A = 2, 3, 4, 2
+        policy_features = torch.randn(B, T, D, device=device)
+        batch = {
+            "vitals": policy_features,
+            "policy_features": policy_features,
+            "use_precomputed_policy_outputs": True,
+            "actions": torch.randn(B, T, A, device=device),
+            "rewards": torch.randn(B, T, device=device),
+            "dones": torch.zeros(B, T, device=device),
+            "log_probs": torch.zeros(B, T, device=device),
+            "entropy": torch.zeros(B, T, device=device),
+            "advantages": torch.zeros(B, T, device=device),
+            "returns": torch.ones(B, T, device=device),
+            "target_actor": torch.ones(B, T, device=device),
+            "base_actor": torch.zeros(B, T, device=device),
+            "weights_actor": torch.ones(B, T, device=device),
+        }
+
+        metrics = stepper.run_step(batch=batch, rl_batch=batch, wm_batch=batch, source_tag="imag")
+
+        self.assertEqual(model.critic.target_calls, 0)
+        self.assertAlmostEqual(float(metrics["critic/slow_reg"]), 0.0, places=6)
+        self.assertAlmostEqual(float(metrics["critic/slow_reg_weight"]), 0.0, places=6)
 
     def test_target_value_consistency_penalty_contributes_to_world_model_update(self):
         device = torch.device("cpu")
