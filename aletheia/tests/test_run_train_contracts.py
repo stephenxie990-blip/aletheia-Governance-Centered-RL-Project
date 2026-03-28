@@ -6400,6 +6400,16 @@ class TestRunTrainContracts(unittest.TestCase):
                 seed=0,
             )
 
+    def test_create_agent_rejects_unknown_custom_override_keys(self):
+        env = _CountingEnv(done_after=2)
+        with self.assertRaisesRegex(ValueError, "Unknown create_agent overrides"):
+            api.create_agent(
+                env,
+                config_overrides={"definitely_unknown_override_key": 1},
+                device="cpu",
+                seed=0,
+            )
+
     def test_agent_factory_rejects_unknown_component_override_keys(self):
         with self.assertRaisesRegex(ValueError, "Unknown override keys"):
             api.AgentFactory._validate_overrides(

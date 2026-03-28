@@ -1117,6 +1117,20 @@ class AgentFactory:
                 "critic_pessimism": "pessimism",
                 "critic_target_update_tau": "target_update_tau",
             }
+            capacity_tuning_keys = {
+                "adaptive_capacity",
+                "min_deter",
+                "max_deter",
+                "min_stoch",
+                "max_stoch",
+                "respect_profile_minimum",
+                "hard_fallback_enabled",
+            }
+            compatibility_override_keys = {
+                "curiosity_enabled",
+                "mastery_enabled",
+            }
+            unknown_override_keys: List[str] = []
             for key, value in cleaned_overrides.items():
                 if hasattr(profile, key):
                     setattr(profile, key, value)
@@ -1135,6 +1149,17 @@ class AgentFactory:
                     profile.critic = replace(profile.critic, **{critic_attr: value})
                 elif hasattr(profile.will, key):
                     profile.will = replace(profile.will, **{key: value})
+                elif key in capacity_tuning_keys:
+                    continue
+                elif key in compatibility_override_keys:
+                    continue
+                else:
+                    unknown_override_keys.append(key)
+            if unknown_override_keys:
+                raise ValueError(
+                    "Unknown create_agent overrides: "
+                    + ", ".join(sorted(unknown_override_keys))
+                )
 
         # Read capacity tuning knobs
         adaptive_enabled = True
