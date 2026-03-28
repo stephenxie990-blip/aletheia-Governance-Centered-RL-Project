@@ -10856,15 +10856,10 @@ class TrainingLoop:
         )
         metrics.update(runtime_compensation_metrics)
         self.metrics.update(runtime_compensation_metrics)
-        if runtime_guard_disabled and not bool(
-            getattr(self, "_runtime_compensation_guard_mismatch_warned", False)
-        ):
-            logger.warning(
-                "Runtime compensation phase is post_solved, but current run has "
-                "post-solved guards disabled; this usually means resume restored "
-                "state without inheriting the original post-solved strategy config."
-            )
-            self._runtime_compensation_guard_mismatch_warned = True
+        self._handle_runtime_compensation_guard_mismatch(
+            runtime_guard_disabled=runtime_guard_disabled,
+            runtime_guard_disabled_reason=runtime_guard_disabled_reason,
+        )
         self.global_step += 1
         self.training_step.global_step = int(self.global_step)
 
@@ -21027,6 +21022,34 @@ class TrainingLoop:
             self,
             runtime_compensation_phase,
         )
+
+    def _handle_runtime_compensation_guard_mismatch(
+        self,
+        *,
+        runtime_guard_disabled: bool,
+        runtime_guard_disabled_reason: str,
+    ) -> None:
+        del runtime_guard_disabled_reason
+        if not runtime_guard_disabled:
+            return
+        validation_mode = str(
+            getattr(self.config, "validation_mode", "strict") or "strict"
+        ).strip().lower()
+        message = (
+            "Runtime compensation phase is post_solved, but current run has "
+            "post-solved guards disabled; this usually means resume restored "
+            "state without inheriting the original post-solved strategy config."
+        )
+        if validation_mode == "off":
+            return
+        if validation_mode == "warn":
+            if not bool(
+                getattr(self, "_runtime_compensation_guard_mismatch_warned", False)
+            ):
+                logger.warning(message)
+                self._runtime_compensation_guard_mismatch_warned = True
+            return
+        raise RuntimeError(message)
 
     def _build_runtime_compensation_metric_fields(
         self,

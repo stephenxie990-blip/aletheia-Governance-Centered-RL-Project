@@ -276,7 +276,7 @@ class TestRealBatchMcAnchor(unittest.TestCase):
         )
 
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             total_steps=1,
             num_train_steps=1,
@@ -822,7 +822,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         buffer = ReplayBuffer(capacity=16, store_obs=False)
         device = torch.device("cpu")
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             total_steps=1,
             num_train_steps=1,
@@ -880,7 +880,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         buffer = ReplayBuffer(capacity=16, store_obs=False)
         device = torch.device("cpu")
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             total_steps=1,
             num_train_steps=1,
@@ -936,7 +936,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         buffer = ReplayBuffer(capacity=8, store_obs=False)
         device = torch.device("cpu")
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             total_steps=1,
             num_train_steps=1,
@@ -2347,7 +2347,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             buffer.add_step(vitals=np.full((4,), 2.0, dtype=np.float32), action=np.array([1.0, 0.0], dtype=np.float32), reward=1.0, done=False, log_prob=0.0)
             buffer.add_step(vitals=np.full((4,), 3.0, dtype=np.float32), action=np.array([0.0, 1.0], dtype=np.float32), reward=0.0, done=True, terminated=True, truncated=False, log_prob=0.0)
             config = TrainingConfig(
-                config_mode="strict",
+                config_mode="compat",
                 validation_mode="off",
                 total_steps=1,
                 num_train_steps=1,
@@ -2428,7 +2428,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         buffer.add_step(vitals=np.full((4,), 2.0, dtype=np.float32), action=np.array([1.0, 0.0], dtype=np.float32), reward=1.0, done=False, log_prob=0.0)
         buffer.add_step(vitals=np.full((4,), 3.0, dtype=np.float32), action=np.array([0.0, 1.0], dtype=np.float32), reward=0.0, done=True, terminated=True, truncated=False, log_prob=0.0)
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             total_steps=1,
             num_train_steps=1,
@@ -2497,7 +2497,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         buffer.add_step(vitals=np.full((4,), 2.0, dtype=np.float32), action=np.array([1.0, 0.0], dtype=np.float32), reward=1.0, done=False, log_prob=0.0)
         buffer.add_step(vitals=np.full((4,), 3.0, dtype=np.float32), action=np.array([0.0, 1.0], dtype=np.float32), reward=0.0, done=True, terminated=True, truncated=False, log_prob=0.0)
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             total_steps=1,
             num_train_steps=1,
@@ -2566,7 +2566,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         buffer.add_step(vitals=np.full((4,), 2.0, dtype=np.float32), action=np.array([1.0, 0.0], dtype=np.float32), reward=1.0, done=False, log_prob=0.0)
         buffer.add_step(vitals=np.full((4,), 3.0, dtype=np.float32), action=np.array([0.0, 1.0], dtype=np.float32), reward=0.0, done=True, terminated=True, truncated=False, log_prob=0.0)
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             total_steps=1,
             num_train_steps=1,
@@ -3000,7 +3000,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
 
         def make_loop(critic_boost: float, anchor_scale: float) -> TrainingLoop:
             config = TrainingConfig(
-                config_mode="strict",
+                config_mode="compat",
                 validation_mode="off",
                 total_steps=1,
                 num_train_steps=1,
@@ -3097,7 +3097,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
 
         def make_loop(critic_boost: float, anchor_scale: float) -> TrainingLoop:
             config = TrainingConfig(
-                config_mode="strict",
+                config_mode="compat",
                 validation_mode="off",
                 total_steps=1,
                 num_train_steps=1,
@@ -3197,7 +3197,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
 
         def make_loop(return_cap_margin: float) -> TrainingLoop:
             config = TrainingConfig(
-                config_mode="strict",
+                config_mode="compat",
                 validation_mode="off",
                 total_steps=1,
                 num_train_steps=1,
@@ -3310,7 +3310,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             buffer.add_step(vitals=np.full((4,), 2.0, dtype=np.float32), action=np.array([1.0, 0.0], dtype=np.float32), reward=1.0, done=False, log_prob=0.0)
             buffer.add_step(vitals=np.full((4,), 3.0, dtype=np.float32), action=np.array([0.0, 1.0], dtype=np.float32), reward=0.0, done=True, terminated=True, truncated=False, log_prob=0.0)
             config = TrainingConfig(
-                config_mode="strict",
+                config_mode="compat",
                 validation_mode="off",
                 total_steps=1,
                 num_train_steps=1,
@@ -3789,7 +3789,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         buffer.add_step(vitals=np.full((4,), 2.0, dtype=np.float32), action=np.array([1.0, 0.0], dtype=np.float32), reward=1.0, done=False, log_prob=0.0)
         buffer.add_step(vitals=np.full((4,), 3.0, dtype=np.float32), action=np.array([0.0, 1.0], dtype=np.float32), reward=0.0, done=True, terminated=True, truncated=False, log_prob=0.0)
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             total_steps=1,
             num_train_steps=1,
@@ -4005,7 +4005,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         buffer.add_step(vitals=np.full((4,), 2.0, dtype=np.float32), action=np.array([1.0, 0.0], dtype=np.float32), reward=1.0, done=False, log_prob=0.0)
         buffer.add_step(vitals=np.full((4,), 3.0, dtype=np.float32), action=np.array([0.0, 1.0], dtype=np.float32), reward=0.0, done=True, terminated=True, truncated=False, log_prob=0.0)
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             total_steps=1,
             num_train_steps=1,
@@ -4074,7 +4074,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         buffer.add_step(vitals=np.full((4,), 2.0, dtype=np.float32), action=np.array([1.0, 0.0], dtype=np.float32), reward=1.0, done=False, log_prob=0.0)
         buffer.add_step(vitals=np.full((4,), 3.0, dtype=np.float32), action=np.array([0.0, 1.0], dtype=np.float32), reward=0.0, done=True, terminated=True, truncated=False, log_prob=0.0)
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             total_steps=1,
             num_train_steps=1,
@@ -4150,7 +4150,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         buffer.add_step(vitals=np.full((4,), 2.0, dtype=np.float32), action=np.array([1.0, 0.0], dtype=np.float32), reward=1.0, done=False, log_prob=0.0)
         buffer.add_step(vitals=np.full((4,), 3.0, dtype=np.float32), action=np.array([0.0, 1.0], dtype=np.float32), reward=0.0, done=True, terminated=True, truncated=False, log_prob=0.0)
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             total_steps=1,
             num_train_steps=1,
@@ -14142,7 +14142,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
     def test_imagination_only_resume_restores_buffer_and_loop_counters(self):
         device = torch.device("cpu")
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             total_steps=6,
             num_train_steps=6,
@@ -14935,7 +14935,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
     def test_build_real_batch_injects_runtime_compensation_context(self):
         device = torch.device("cpu")
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             batch_size=1,
             seq_len=2,
@@ -15005,7 +15005,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
     def test_train_step_logs_real_runtime_compensation_phase(self):
         device = torch.device("cpu")
         config = TrainingConfig(
-            config_mode="strict",
+            config_mode="compat",
             validation_mode="off",
             batch_size=1,
             seq_len=2,
@@ -15064,27 +15064,113 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         real_batch = loop._build_real_batch()
 
         self.assertIsNotNone(real_batch)
-        metrics = loop.train_step(
-            rl_batch=real_batch,
-            wm_batch=real_batch,
-            source_tag="real",
-            imag_ratio=0.0,
-        )
+        warnings = []
+
+        def _capture_warning(msg, *args, **kwargs):
+            del kwargs
+            warnings.append(msg % args if args else msg)
+
+        with mock.patch("aletheia.aletheia_train.logger.warning", side_effect=_capture_warning):
+            metrics = loop.train_step(
+                rl_batch=real_batch,
+                wm_batch=real_batch,
+                source_tag="real",
+                imag_ratio=0.0,
+            )
 
         self.assertEqual(metrics["real/runtime_compensation_phase"], "post_solved")
         self.assertEqual(metrics["train/runtime_compensation_phase"], "post_solved")
         self.assertEqual(metrics["train/compensation_restore_status"], "not_restored")
+        self.assertEqual(
+            metrics["train/runtime_compensation_guard_disabled_reason"],
+            "post_solved_guards_disabled",
+        )
+        self.assertAlmostEqual(
+            float(metrics["train/runtime_compensation_guard_disabled"]),
+            1.0,
+            places=6,
+        )
         self.assertAlmostEqual(
             float(metrics["train/compensation_restore_degraded"]),
             0.0,
             places=6,
         )
+        self.assertEqual(warnings, [])
 
-    def test_train_step_warns_once_when_post_solved_guards_are_disabled(self):
+    def test_train_step_rejects_post_solved_guard_mismatch_in_validation_strict_mode(self):
         device = torch.device("cpu")
         config = TrainingConfig(
-            config_mode="strict",
-            validation_mode="off",
+            config_mode="compat",
+            validation_mode="strict",
+            batch_size=1,
+            seq_len=2,
+            wm_seq_len=2,
+            wm_batch_size=1,
+            rl_batch_size=1,
+            total_steps=1,
+            num_train_steps=1,
+            total_env_steps=2,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+            adaptive_imag_compensation_post_solved_critic_anchor_weight=0.0,
+            log_interval=1000,
+            eval_interval=1000,
+            save_interval=1000,
+        )
+
+        buffer = ReplayBuffer(capacity=8, store_obs=False)
+        buffer.start_episode(np.zeros((4,), dtype=np.float32))
+        buffer.add_step(
+            vitals=np.ones((4,), dtype=np.float32),
+            action=np.array([1.0, 0.0], dtype=np.float32),
+            reward=1.0,
+            done=False,
+            terminated=False,
+            truncated=False,
+            log_prob=0.0,
+        )
+        buffer.add_step(
+            vitals=np.full((4,), 2.0, dtype=np.float32),
+            action=np.array([0.0, 1.0], dtype=np.float32),
+            reward=1.0,
+            done=True,
+            terminated=True,
+            truncated=False,
+            log_prob=0.0,
+        )
+
+        loop = TrainingLoop(
+            model=_TinyImagModel(),
+            buffer=buffer,
+            config=config,
+            device=device,
+            env=None,
+        )
+        loop.global_step = 10
+        loop._adaptive_imag_compensation_post_solved_hold_until_step = 20
+        loop._compute_gae_for_batch = lambda batch: {
+            **batch,
+            "advantages": torch.ones((1, 2), device=device),
+            "returns": torch.ones((1, 2), device=device),
+            "values": torch.zeros((1, 2), device=device),
+        }
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Runtime compensation phase is post_solved",
+        ):
+            loop.train_step(
+                rl_batch=loop._build_real_batch(),
+                wm_batch=loop._build_real_batch(),
+                source_tag="real",
+                imag_ratio=0.0,
+            )
+
+    def test_train_step_warns_once_when_post_solved_guards_are_disabled_in_warn_mode(self):
+        device = torch.device("cpu")
+        config = TrainingConfig(
+            config_mode="compat",
+            validation_mode="warn",
             batch_size=1,
             seq_len=2,
             wm_seq_len=2,
