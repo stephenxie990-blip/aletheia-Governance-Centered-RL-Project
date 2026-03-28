@@ -57,7 +57,7 @@ import math
 import warnings
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -110,6 +110,29 @@ _DEFAULT_SYMLOG_CLIP: float = 20.0
 
 def _norm_from_layer_flag(enabled: bool) -> str:
     return "layer" if enabled else "none"
+
+
+def _validate_critic_target_gammas(
+    target_gammas: Iterable[float],
+    expected_gammas: Iterable[float],
+) -> None:
+    target_set = {float(g) for g in target_gammas}
+    expected_set = {float(g) for g in expected_gammas}
+    if target_set == expected_set:
+        return
+
+    extra = sorted(target_set - expected_set)
+    missing = sorted(expected_set - target_set)
+    details: List[str] = []
+    if missing:
+        details.append(f"missing={missing}")
+    if extra:
+        details.append(f"extra={extra}")
+    suffix = f": {', '.join(details)}" if details else ""
+    raise ValueError(
+        "gamma targets must exactly match configured critic gammas"
+        f"{suffix}"
+    )
 
 # =============================================================================
 # 2  Symlog / Symexp  (unified from aletheia_foundation)
@@ -1678,23 +1701,8 @@ class MultiHeadEnsembleCritic(nn.Module):
         )
         h = self.backbone(x.reshape(-1, x.shape[-1]))
 
-        valid_gammas = set(targets.keys()) & set(self.gammas)
-        if not valid_gammas:
-            raise ValueError(
-                f"No matching gammas!  targets={sorted(targets.keys())}, "
-                f"model={sorted(self.gammas)}"
-            )
-
-        extra = set(targets.keys()) - set(self.gammas)
-        missing = set(self.gammas) - set(targets.keys())
-        if extra:
-            warnings.warn(
-                f"Ignoring extra gammas in targets: {sorted(extra)}"
-            )
-        if missing:
-            warnings.warn(
-                f"Missing gammas in targets: {sorted(missing)}"
-            )
+        _validate_critic_target_gammas(targets.keys(), self.gammas)
+        valid_gammas = set(self.gammas)
 
         g_losses: List[Tensor] = []
         per_gamma: Dict[float, Tensor] = {}
@@ -2100,6 +2108,7 @@ class HierarchicalUnifiedCritic(nn.Module):
         ``loss_critic`` / ``loss_router`` are detached diagnostics for
         logging or advanced training loops.
         """
+        _validate_critic_target_gammas(targets.keys(), self.gammas)
         core_loss = self.core.compute_loss(
             feat, targets, intent, weights,
             detach_features=detach_features,
@@ -2110,18 +2119,6 @@ class HierarchicalUnifiedCritic(nn.Module):
             or not self.cfg.use_adaptive_routing
             or not include_router_loss
         ):
-            return {
-                "loss": core_loss["loss"],
-                "loss_critic": core_loss["loss"].detach(),
-                "per_gamma": core_loss["per_gamma"],
-            }
-
-        missing = set(self.gammas) - set(targets.keys())
-        if missing:
-            warnings.warn(
-                f"Skipping router loss: missing targets for "
-                f"{sorted(missing)}"
-            )
             return {
                 "loss": core_loss["loss"],
                 "loss_critic": core_loss["loss"].detach(),

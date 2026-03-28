@@ -64,6 +64,7 @@ from aletheia.aletheia_world_model import (
 )
 from aletheia.aletheia_actor_critic import (
     Actor,
+    HierarchicalUnifiedCritic,
     SingleCritic,
     MultiHeadEnsembleCritic,
     CriticOutput,
@@ -450,6 +451,51 @@ class TestMultiHeadEnsembleCritic(unittest.TestCase):
         losses = self.critic.compute_loss(feat, targets)
         self.assertIn("loss", losses)
         self.assertTrue(torch.isfinite(losses["loss"]))
+
+    def test_compute_loss_rejects_missing_gamma_targets(self):
+        feat = torch.randn(self.B, self.feat_dim)
+        targets = {0.9: torch.randn(self.B)}
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "gamma targets must exactly match configured critic gammas",
+        ):
+            self.critic.compute_loss(feat, targets)
+
+    def test_compute_loss_rejects_extra_gamma_targets(self):
+        feat = torch.randn(self.B, self.feat_dim)
+        targets = {
+            0.9: torch.randn(self.B),
+            0.95: torch.randn(self.B),
+            0.99: torch.randn(self.B),
+        }
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "gamma targets must exactly match configured critic gammas",
+        ):
+            self.critic.compute_loss(feat, targets)
+
+    def test_hierarchical_critic_rejects_gamma_target_mismatch_with_router_enabled(self):
+        critic = HierarchicalUnifiedCritic(
+            CriticConfig(
+                d_feature=self.feat_dim,
+                gammas=(0.9, 0.99),
+                n_ensemble=2,
+                hidden_dim=64,
+                hidden_depth=2,
+                mode="adaptive",
+                use_adaptive_routing=True,
+            )
+        )
+        feat = torch.randn(self.B, self.feat_dim)
+        targets = {0.9: torch.randn(self.B)}
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "gamma targets must exactly match configured critic gammas",
+        ):
+            critic.compute_loss(feat, targets)
 
 
 # =========================================================================
