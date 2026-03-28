@@ -67,6 +67,7 @@ from aletheia.aletheia_config import (
     parse_factory_bridge_overrides,
     parse_config_policy_overrides,
 )
+from aletheia.aletheia_actor_critic import TanhTransformedDistribution
 
 
 class _CountingEnv:
@@ -437,6 +438,23 @@ class _ModeAwareActor(nn.Module):
         return _ModeDist(self.linear(feat))
 
 
+class _ContinuousModeAwareActor(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.linear = nn.Linear(4, 2, bias=False)
+        with torch.no_grad():
+            self.linear.weight.copy_(
+                torch.tensor([[0.25, 0.0, 0.0, 0.0], [-0.25, 0.0, 0.0, 0.0]])
+            )
+        self.seen_training = []
+
+    def forward(self, feat):
+        self.seen_training.append(bool(self.training))
+        mean = self.linear(feat)
+        scale = torch.full_like(mean, 0.5)
+        return TanhTransformedDistribution(mean, scale, entropy_samples=8)
+
+
 class _FailingModeAwareActor(nn.Module):
     def forward(self, feat):
         del feat
@@ -688,6 +706,40 @@ class TestRunTrainContracts(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "anchor policy KL"):
             api._evaluate_agent(env, handle, episodes=1, max_steps=4)
+
+    def test_evaluate_agent_supports_tanh_transformed_policy_kl_telemetry(self):
+        handle = self._make_continuous_mode_handle()
+        anchor_actor = _ContinuousModeAwareActor()
+        anchor_actor.load_state_dict(handle.actor.state_dict())
+        for param in anchor_actor.parameters():
+            param.requires_grad_(False)
+        handle._real_stability_eval_anchor_actor = anchor_actor
+        handle._real_stability_eval_anchor_registry_actors = [anchor_actor]
+        env = _AlternatingObsEnv(
+            observations=[
+                np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                np.array([-1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            ]
+        )
+
+        results = api._evaluate_agent(env, handle, episodes=1, max_steps=6)
+
+        telemetry = results["telemetry"]
+        self.assertGreaterEqual(
+            float(telemetry["real_behavior_action_entropy_mean"]),
+            0.0,
+        )
+        self.assertAlmostEqual(
+            float(telemetry["real_policy_kl_to_certified_anchor_mean"]),
+            0.0,
+            places=4,
+        )
+        self.assertAlmostEqual(
+            float(telemetry["real_policy_kl_to_certified_registry_mean"]),
+            0.0,
+            places=4,
+        )
 
     def test_training_loop_run_stops_when_eval_requests_early_stop(self):
         events = []
@@ -5627,6 +5679,12 @@ class TestRunTrainContracts(unittest.TestCase):
     def _make_invalid_mode_handle(self):
         handle = self._make_mode_handle()
         handle.world_model = _InvalidModeAwareWorldModel()
+        return handle
+
+    def _make_continuous_mode_handle(self):
+        handle = self._make_mode_handle()
+        handle.profile = SimpleNamespace(obs_shape=(4,), action_dim=2, is_discrete=False)
+        handle.actor = _ContinuousModeAwareActor()
         return handle
 
     def test_agent_act_keeps_train_mode_for_stochastic_collection(self):

@@ -30,6 +30,7 @@ from typing import (
 import torch
 import torch.nn as nn
 import numpy as np
+from torch.distributions.kl import kl_divergence as torch_kl_divergence
 
 from .aletheia_config import (
     DEFAULT_STEPS,
@@ -2531,6 +2532,18 @@ def _compute_dist_kl(
     strict: bool = False,
     failure_context: str = "policy KL",
 ) -> Optional[torch.Tensor]:
+    kl_method = getattr(anchor_dist, "kl_divergence", None)
+    if callable(kl_method):
+        try:
+            return kl_method(current_dist)
+        except Exception as exc:
+            if strict:
+                raise RuntimeError(f"{failure_context} failed: {exc}") from exc
+            return None
+    try:
+        return torch_kl_divergence(anchor_dist, current_dist)
+    except Exception:
+        pass
     anchor_probs, anchor_log_probs = _resolve_dist_probs_and_log_probs(anchor_dist)
     _, current_log_probs = _resolve_dist_probs_and_log_probs(current_dist)
     if anchor_probs is not None and anchor_log_probs is not None and current_log_probs is not None:
