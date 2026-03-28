@@ -4079,6 +4079,12 @@ def run_train(
                 train_config,
                 agent.device,
                 trusted_source=True,
+                restore_policy=TrainingCheckpointRestorePolicy(
+                    restore_model=False,
+                    restore_optimizers=False,
+                    restore_buffer=False,
+                    optimizer_restore_mode="skip",
+                ),
             )
         except Exception as exc:
             raise RuntimeError(
@@ -4252,7 +4258,7 @@ def run_train(
                 getattr(args, "resume_model_restore_mode", "strict") or "strict"
             ).strip().lower(),
             optimizer_restore_mode=str(
-                getattr(args, "resume_optimizer_restore_mode", "auto") or "auto"
+                getattr(args, "resume_optimizer_restore_mode", "strict") or "strict"
             ).strip().lower(),
             legacy_steps_since_collect_mode=str(
                 getattr(args, "resume_legacy_steps_since_collect_mode", "strict")
@@ -4483,7 +4489,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument(
         "--resume-optimizer-restore-mode",
         type=str,
-        default="auto",
+        default="strict",
         choices=["auto", "strict", "skip"],
         help="Optimizer restore mode for trainer-state resume",
     )

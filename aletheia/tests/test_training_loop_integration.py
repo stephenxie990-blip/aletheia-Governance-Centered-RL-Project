@@ -15460,11 +15460,19 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
                 warnings.append(msg % args if args else msg)
 
             with mock.patch("aletheia.aletheia_train.logger.warning", side_effect=_capture_warning):
+                from aletheia._training_checkpoint_schema import (
+                    TrainingCheckpointRestorePolicy,
+                )
                 train_mod.TrainingStateManager.load(
                     ckpt_path,
                     config,
                     device,
                     model=target_model,
+                    restore_policy=TrainingCheckpointRestorePolicy(
+                        restore_optimizers=False,
+                        restore_buffer=False,
+                        optimizer_restore_mode="skip",
+                    ),
                 )
 
         self.assertFalse(any("non-strict model restore" in w for w in warnings))

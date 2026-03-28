@@ -1962,12 +1962,21 @@ class TestRunTrainContracts(unittest.TestCase):
             self.assertTrue(bool(policy.restore_optimizers))
             self.assertTrue(bool(policy.restore_buffer))
             self.assertEqual(str(policy.model_restore_mode), "strict")
-            self.assertEqual(str(policy.optimizer_restore_mode), "auto")
-            load_mock.assert_called_once_with(
-                str(resume_path),
-                cfg,
-                agent.device,
-                trusted_source=True,
+            self.assertEqual(str(policy.optimizer_restore_mode), "strict")
+            load_mock.assert_called_once()
+            load_args = load_mock.call_args.args
+            load_kwargs = load_mock.call_args.kwargs
+            self.assertEqual(load_args[:3], (str(resume_path), cfg, agent.device))
+            self.assertTrue(bool(load_kwargs["trusted_source"]))
+            metadata_policy = load_kwargs["restore_policy"]
+            self.assertTrue(bool(metadata_policy.restore_training_state))
+            self.assertFalse(bool(metadata_policy.restore_model))
+            self.assertFalse(bool(metadata_policy.restore_optimizers))
+            self.assertFalse(bool(metadata_policy.restore_buffer))
+            self.assertEqual(str(metadata_policy.model_restore_mode), "strict")
+            self.assertEqual(
+                str(metadata_policy.optimizer_restore_mode),
+                "skip",
             )
             self.assertTrue((Path(tmpdir) / "resume_latest.pt").exists())
             self.assertTrue((Path(tmpdir) / "trainer_state_final.pt").exists())
@@ -5543,6 +5552,43 @@ class TestRunTrainContracts(unittest.TestCase):
                 current_effective_training_config=config.to_dict(),
             )
 
+    def test_restore_training_checkpoint_payload_rejects_optimizer_restore_on_config_drift_by_default(self):
+        config = TrainingConfig(
+            total_steps=12,
+            num_train_steps=12,
+            total_env_steps=12,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+        )
+        state = train_mod.TrainingState(config=config, device=torch.device("cpu"))
+        opt_bundle = mock.Mock()
+        buffer = mock.Mock()
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "effective training config drift detected",
+        ):
+            restore_training_checkpoint_payload(
+                {
+                    "training_state": state.state_dict(),
+                    "effective_training_config": {"total_steps": 12},
+                    "optimizer_bundle": {"optimizer": 2},
+                    "replay_buffer": {"buffer": 3},
+                },
+                state=state,
+                opt_bundle=opt_bundle,
+                buffer=buffer,
+                checkpoint_path="trainer_state.pt",
+                restore_policy=TrainingCheckpointRestorePolicy(
+                    restore_model=False,
+                    optimizer_restore_mode="strict",
+                ),
+                current_effective_training_config={"total_steps": 24},
+            )
+
+        opt_bundle.load_state_dict.assert_not_called()
+        buffer.load_state_dict.assert_not_called()
+
     def test_restore_training_checkpoint_payload_auto_downgrades_optimizer_restore_on_config_drift(self):
         config = TrainingConfig(
             total_steps=12,
@@ -5567,6 +5613,10 @@ class TestRunTrainContracts(unittest.TestCase):
                 opt_bundle=opt_bundle,
                 buffer=buffer,
                 checkpoint_path="trainer_state.pt",
+                restore_policy=TrainingCheckpointRestorePolicy(
+                    restore_model=False,
+                    optimizer_restore_mode="auto",
+                ),
                 current_effective_training_config={"total_steps": 24},
             )
 
@@ -5579,14 +5629,129 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertIn("optimizer %s mode", warning_text)
         self.assertIn("skip", warning_text)
 
+    def test_restore_training_checkpoint_payload_rejects_missing_requested_training_state_section(self):
+        config = TrainingConfig()
+        state = train_mod.TrainingState(config=config, device=torch.device("cpu"))
+
+        with self.assertRaisesRegex(KeyError, "training_state"):
+            restore_training_checkpoint_payload(
+                {
+                    "effective_training_config": config.to_dict(),
+                },
+                state=state,
+                checkpoint_path="trainer_state.pt",
+                restore_policy=TrainingCheckpointRestorePolicy(
+                    restore_model=False,
+                    restore_optimizers=False,
+                    restore_buffer=False,
+                    optimizer_restore_mode="skip",
+                ),
+                current_effective_training_config=config.to_dict(),
+            )
+
+    def test_restore_training_checkpoint_payload_rejects_missing_requested_model_section(self):
+        config = TrainingConfig()
+        state = train_mod.TrainingState(config=config, device=torch.device("cpu"))
+        model = mock.Mock()
+
+        with self.assertRaisesRegex(KeyError, "model"):
+            restore_training_checkpoint_payload(
+                {
+                    "training_state": state.state_dict(),
+                    "effective_training_config": config.to_dict(),
+                },
+                state=state,
+                model=model,
+                checkpoint_path="trainer_state.pt",
+                restore_policy=TrainingCheckpointRestorePolicy(
+                    restore_optimizers=False,
+                    restore_buffer=False,
+                    optimizer_restore_mode="skip",
+                ),
+                current_effective_training_config=config.to_dict(),
+            )
+
+        model.load_state_dict.assert_not_called()
+
+    def test_restore_training_checkpoint_payload_rejects_missing_requested_optimizer_section(self):
+        config = TrainingConfig()
+        state = train_mod.TrainingState(config=config, device=torch.device("cpu"))
+        opt_bundle = mock.Mock()
+
+        with self.assertRaisesRegex(KeyError, "optimizer_bundle"):
+            restore_training_checkpoint_payload(
+                {
+                    "training_state": state.state_dict(),
+                    "effective_training_config": config.to_dict(),
+                },
+                state=state,
+                opt_bundle=opt_bundle,
+                checkpoint_path="trainer_state.pt",
+                restore_policy=TrainingCheckpointRestorePolicy(
+                    restore_model=False,
+                    restore_buffer=False,
+                    optimizer_restore_mode="strict",
+                ),
+                current_effective_training_config=config.to_dict(),
+            )
+
+        opt_bundle.load_state_dict.assert_not_called()
+
+    def test_restore_training_checkpoint_payload_rejects_missing_requested_buffer_section(self):
+        config = TrainingConfig()
+        state = train_mod.TrainingState(config=config, device=torch.device("cpu"))
+        buffer = mock.Mock()
+
+        with self.assertRaisesRegex(KeyError, "replay_buffer"):
+            restore_training_checkpoint_payload(
+                {
+                    "training_state": state.state_dict(),
+                    "effective_training_config": config.to_dict(),
+                },
+                state=state,
+                buffer=buffer,
+                checkpoint_path="trainer_state.pt",
+                restore_policy=TrainingCheckpointRestorePolicy(
+                    restore_model=False,
+                    restore_optimizers=False,
+                    optimizer_restore_mode="skip",
+                ),
+                current_effective_training_config=config.to_dict(),
+            )
+
+        buffer.load_state_dict.assert_not_called()
+
+    def test_restore_training_checkpoint_payload_rejects_missing_requested_optimizer_target(self):
+        config = TrainingConfig()
+        state = train_mod.TrainingState(config=config, device=torch.device("cpu"))
+        with self.assertRaisesRegex(ValueError, "optimizer_bundle"):
+            restore_training_checkpoint_payload(
+                {
+                    "training_state": state.state_dict(),
+                    "effective_training_config": config.to_dict(),
+                    "optimizer_bundle": {"optimizer": 2},
+                },
+                state=state,
+                opt_bundle=None,
+                checkpoint_path="trainer_state.pt",
+                restore_policy=TrainingCheckpointRestorePolicy(
+                    restore_model=False,
+                    restore_buffer=False,
+                    optimizer_restore_mode="strict",
+                ),
+                current_effective_training_config=config.to_dict(),
+            )
+
     def test_restore_training_checkpoint_payload_can_skip_optimizer_and_buffer_layers(self):
         config = TrainingConfig()
         state = train_mod.TrainingState(config=config, device=torch.device("cpu"))
         opt_bundle = mock.Mock()
         buffer = mock.Mock()
         policy = TrainingCheckpointRestorePolicy(
+            restore_model=False,
             restore_optimizers=False,
             restore_buffer=False,
+            optimizer_restore_mode="skip",
         )
 
         restore_training_checkpoint_payload(
@@ -5670,6 +5835,12 @@ class TestRunTrainContracts(unittest.TestCase):
                 device=device,
                 model=model,
                 trusted_source=True,
+                restore_policy=TrainingCheckpointRestorePolicy(
+                    restore_model=False,
+                    restore_optimizers=False,
+                    restore_buffer=False,
+                    optimizer_restore_mode="skip",
+                ),
             )
 
         read_mock.assert_called_once_with(

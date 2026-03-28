@@ -23,12 +23,12 @@ class TrainingCheckpointRestorePolicy:
     restore_optimizers: bool = True
     restore_buffer: bool = True
     model_restore_mode: str = "strict"
-    optimizer_restore_mode: str = "auto"
+    optimizer_restore_mode: str = "strict"
     legacy_steps_since_collect_mode: str = "strict"
 
     def normalized(self) -> "TrainingCheckpointRestorePolicy":
         model_mode = str(self.model_restore_mode or "strict").strip().lower()
-        mode = str(self.optimizer_restore_mode or "auto").strip().lower()
+        mode = str(self.optimizer_restore_mode or "strict").strip().lower()
         legacy_mode = str(
             self.legacy_steps_since_collect_mode or "strict"
         ).strip().lower()
@@ -88,6 +88,52 @@ def _resolve_auto_optimizer_restore_mode(
     return "strict", None
 
 
+def _require_checkpoint_section(
+    checkpoint: Mapping[str, Any],
+    *,
+    section: str,
+) -> None:
+    if section not in checkpoint:
+        raise KeyError(section)
+
+
+def _require_restore_target(
+    target: Optional[Any],
+    *,
+    section: str,
+) -> None:
+    if target is None:
+        raise ValueError(
+            f"Checkpoint restore target '{section}' is missing."
+        )
+    if not hasattr(target, "load_state_dict"):
+        raise TypeError(
+            f"Checkpoint restore target '{section}' does not provide load_state_dict()."
+        )
+
+
+def _validate_strict_optimizer_restore_metadata(
+    checkpoint: Mapping[str, Any],
+    *,
+    checkpoint_path: Optional[str],
+    current_effective_training_config: Optional[Any],
+) -> None:
+    _, optimizer_restore_reason = _resolve_auto_optimizer_restore_mode(
+        checkpoint,
+        current_effective_training_config=current_effective_training_config,
+    )
+    if optimizer_restore_reason is None:
+        return
+    raise RuntimeError(
+        "Training checkpoint restore failed for "
+        f"{checkpoint_path or '<checkpoint>'}: optimizer restore strict mode "
+        "requires matching effective training config metadata: "
+        f"{optimizer_restore_reason}. Pass "
+        "TrainingCheckpointRestorePolicy(optimizer_restore_mode='auto') "
+        "to allow compatibility downgrades, or 'skip' to opt out explicitly."
+    )
+
+
 def build_training_checkpoint_payload(
     state: Any,
     *,
@@ -135,7 +181,8 @@ def restore_training_checkpoint_payload(
     """Restore training objects from the canonical checkpoint payload."""
     policy = _normalize_restore_policy(restore_policy)
 
-    if policy.restore_training_state and "training_state" in checkpoint:
+    if policy.restore_training_state:
+        _require_checkpoint_section(checkpoint, section="training_state")
         state.load_state_dict(checkpoint["training_state"])
 
     optimizer_restore_mode = (
@@ -158,8 +205,16 @@ def restore_training_checkpoint_payload(
                 checkpoint_path or "<checkpoint>",
                 optimizer_restore_reason,
             )
+    elif optimizer_restore_mode == "strict":
+        _validate_strict_optimizer_restore_metadata(
+            checkpoint,
+            checkpoint_path=checkpoint_path,
+            current_effective_training_config=current_effective_training_config,
+        )
 
-    if policy.restore_model and model is not None and "model" in checkpoint:
+    if policy.restore_model:
+        _require_restore_target(model, section="model")
+        _require_checkpoint_section(checkpoint, section="model")
         world_model = getattr(model, "world_model", None)
         if world_model is not None and hasattr(world_model, "_ensure_v45_components"):
             try:
@@ -178,23 +233,24 @@ def restore_training_checkpoint_payload(
                 f"{checkpoint_path or '<checkpoint>'}: model state is incompatible: {exc}"
             ) from exc
 
+    restore_sections = []
+    section_load_kwargs: Dict[str, Dict[str, Any]] = {}
+    if policy.restore_optimizers and optimizer_restore_mode != "skip":
+        _require_restore_target(opt_bundle, section="optimizer_bundle")
+        _require_checkpoint_section(checkpoint, section="optimizer_bundle")
+        restore_sections.append(("optimizer_bundle", opt_bundle))
+        section_load_kwargs["optimizer_bundle"] = {
+            "restore_mode": optimizer_restore_mode,
+        }
+    if policy.restore_buffer:
+        _require_restore_target(buffer, section="replay_buffer")
+        _require_checkpoint_section(checkpoint, section="replay_buffer")
+        restore_sections.append(("replay_buffer", buffer))
+
     restore_report = restore_state_dict_sections(
         checkpoint,
-        (
-            ("optimizer_bundle", opt_bundle),
-            ("replay_buffer", buffer),
-        ),
-        skip_missing_sections=True,
-        skip_missing_objects=True,
-        section_restore_modes={
-            "optimizer_bundle": (
-                optimizer_restore_mode if policy.restore_optimizers else "skip"
-            ),
-            "replay_buffer": "strict" if policy.restore_buffer else "skip",
-        },
-        section_load_kwargs={
-            "optimizer_bundle": {"restore_mode": optimizer_restore_mode},
-        },
+        tuple(restore_sections),
+        section_load_kwargs=section_load_kwargs,
     )
     for issue in restore_report.issues:
         logger.warning(
