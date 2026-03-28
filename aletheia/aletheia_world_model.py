@@ -3787,13 +3787,11 @@ class PredictionHeads(nn.Module):
         if config.mhc is not None and config.mhc.enabled:
             mhc_config = config.mhc
             if mhc_config.feat_dim != config.feat_dim:
-                warnings.warn(
+                raise ValueError(
                     f"MHC feat_dim ({mhc_config.feat_dim}) differs from "
-                    f"PredictionHeads feat_dim ({config.feat_dim}). Using {config.feat_dim}.",
-                    UserWarning,
+                    f"PredictionHeads feat_dim ({config.feat_dim}). "
+                    "Auto-alignment is no longer supported.",
                 )
-                from dataclasses import replace
-                mhc_config = replace(mhc_config, feat_dim=config.feat_dim)
             self.mhc_head = MultiHorizonContinueHead(mhc_config)
 
     @property
@@ -4432,19 +4430,11 @@ def _apply_wall_strength_to_policy_features(
     if weights.dim() == 1:
         weights = weights.unsqueeze(0)
 
-    # Validate and handle the router output expectations: we expect exactly 3 branches (v_x, v_c, v_z).
-    # If the network emitted something else, we log a warning but pad/truncate to maintain functionality
-    # rather than crashing out in production. The assertion clarifies the design constraint.
     if weights.shape[-1] != 3:
-        warnings.warn(
+        raise ValueError(
             f"Expected router to produce 3 branch weights, got {weights.shape[-1]}. "
-            f"Padding or truncating to shape 3. This indicates a misconfigured projection layer.", 
-            UserWarning
+            "Auto-alignment is no longer supported; fix the router projection layer.",
         )
-    if weights.shape[-1] < 3:
-        weights = F.pad(weights, (0, 3 - weights.shape[-1]), value=0.0)
-    elif weights.shape[-1] > 3:
-        weights = weights[..., :3]
 
     B = weights.shape[0]
     device, dtype = weights.device, weights.dtype

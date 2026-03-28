@@ -10,6 +10,7 @@ Aletheia v5.2.5 核心组件单元测试
 import os
 import sys
 import unittest
+import warnings
 from unittest import mock
 from pathlib import Path
 from types import SimpleNamespace
@@ -33,6 +34,7 @@ from aletheia.aletheia_foundation import (
     EntropyProtectionConfig,
     DiscreteDistConfig,
     ContinuousDistConfig,
+    MultiHorizonContinueConfig,
     compute_lambda_returns,
     symlog,
     symexp,
@@ -54,13 +56,18 @@ from aletheia.aletheia_config import (
 )
 from aletheia.aletheia_world_model import (
     ConsistencyAuditor,
+    MultiHorizonContinueHead,
     MultiScaleContinue,
     NStepTerminationLoss,
+    PolicyFeatures,
+    PredictionHeads,
+    PredictionHeadsConfig,
     ShortcutConsistencyLoss,
     StateTransition,
     TransitionOutput,
     WMTrajectory,
     WorldModel,
+    _apply_wall_strength_to_policy_features,
 )
 from aletheia.aletheia_actor_critic import (
     Actor,
@@ -1049,6 +1056,69 @@ class TestWorldModelRssmAlignmentContracts(unittest.TestCase):
         self.assertEqual(int(rssm_cfg.obs_embed_dim), 8)
         self.assertEqual(int(rssm_cfg.distribution.num_classes), 4)
         self.assertEqual(int(rssm_cfg.distribution.num_distributions), 2)
+
+
+class TestWorldModelResidualWarningContracts(unittest.TestCase):
+    def test_mhc_short_sequence_remains_diagnostic_warning(self):
+        mhc = MultiHorizonContinueHead(
+            MultiHorizonContinueConfig(
+                feat_dim=4,
+                horizons=(1, 3),
+                hidden_dim=8,
+                num_layers=1,
+                min_seq_len=5,
+                skip_invalid_horizons=True,
+                loss_scale=1.0,
+            )
+        )
+        feats = torch.randn(2, 2, 4)
+        continues = torch.ones(2, 2)
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            loss, metrics = mhc.loss(feats, continues)
+
+        self.assertEqual(len(caught), 1)
+        self.assertIn("Sequence length 2 < min_seq_len 5", str(caught[0].message))
+        self.assertTrue(torch.isfinite(loss))
+        self.assertAlmostEqual(float(metrics["mhc_valid_horizons"]), 1.0, places=6)
+
+    def test_prediction_heads_reject_mhc_feat_dim_mismatch(self):
+        config = PredictionHeadsConfig(
+            feat_dim=8,
+            vitals_dim=4,
+            mhc=MultiHorizonContinueConfig(
+                enabled=True,
+                feat_dim=6,
+                horizons=(1, 3),
+                hidden_dim=8,
+                num_layers=1,
+                loss_scale=1.0,
+            ),
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "MHC feat_dim",
+        ):
+            PredictionHeads(config)
+
+    def test_apply_wall_strength_rejects_router_weight_shape_drift(self):
+        features = PolicyFeatures(
+            f_policy=torch.randn(1, 4),
+            v_x=torch.randn(1, 4),
+            v_c=torch.randn(1, 4),
+            v_z=torch.randn(1, 4),
+            weights=torch.tensor([[0.7, 0.3]], dtype=torch.float32),
+            uncertainty=torch.zeros(1),
+            mask=torch.zeros(1),
+        )
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "Expected router to produce 3 branch weights",
+        ):
+            _apply_wall_strength_to_policy_features(features, wall_strength=0.5)
 
 
 # =========================================================================
