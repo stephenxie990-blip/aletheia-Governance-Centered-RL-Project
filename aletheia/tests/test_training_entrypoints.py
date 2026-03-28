@@ -369,6 +369,11 @@ class _WallStrengthTrackingWorldModel(nn.Module):
         return self._wall_strength
 
 
+class _ExplodingWallStrengthWorldModel(_WallStrengthTrackingWorldModel):
+    def get_wall_strength(self) -> float:
+        raise RuntimeError("wall strength boom")
+
+
 class _WallStrengthTrackingRouter(nn.Module):
     def __init__(self):
         super().__init__()
@@ -1631,6 +1636,26 @@ class TestTrainingEntryPoints(unittest.TestCase):
         self.assertEqual(str(tracker["context"]), "policy")
         self.assertAlmostEqual(float(router.last_wall_strength), 0.25, places=6)
         self.assertTrue(torch.allclose(features, wm_state.x_proj))
+
+    def test_model_wrapper_policy_from_wm_state_rejects_wall_strength_resolution_failures(self):
+        device = torch.device("cpu")
+        tracker = {}
+        wm_state = _WallStrengthTrackingWMState(
+            x_t=torch.randn(2, 4, device=device, requires_grad=True),
+            x_proj=torch.randn(2, 4, device=device),
+            s_ctrl=torch.randn(2, 3, device=device),
+            tracker=tracker,
+        )
+        world_model = _ExplodingWallStrengthWorldModel(wall_strength=0.25, ctrl_dim=3)
+        wrapper = _ModelWrapper(
+            actor=nn.Identity(),
+            critic=nn.Identity(),
+            world_model=world_model,
+            router=_WallStrengthTrackingRouter(),
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "policy wall strength"):
+            wrapper.policy_from_wm_state(wm_state)
 
     def test_actor_drift_guard_and_slow_reg_scale_activate_on_large_gap(self):
         device = torch.device("cpu")

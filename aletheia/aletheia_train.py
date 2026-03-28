@@ -8587,8 +8587,15 @@ def resolve_policy_wall_strength(
     if world_model is not None and hasattr(world_model, "get_wall_strength"):
         try:
             wall_strength = float(world_model.get_wall_strength())
-        except Exception:
-            wall_strength = float(default)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to resolve policy wall strength from world model: {exc}"
+            ) from exc
+        if not math.isfinite(wall_strength):
+            raise RuntimeError(
+                "Failed to resolve policy wall strength from world model: "
+                f"non-finite value {wall_strength!r}"
+            )
     return max(0.0, min(1.0, wall_strength))
 # ── Training Loop ───────────────────────────────────────────────────────────
 
