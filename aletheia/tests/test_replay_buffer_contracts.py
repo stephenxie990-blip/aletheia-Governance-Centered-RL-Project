@@ -271,6 +271,24 @@ class TestSafeTorchLoad(unittest.TestCase):
             except OSError:
                 pass
 
+    def test_safe_torch_load_loads_legacy_numpy_scalar_payload(self):
+        fd, path = tempfile.mkstemp(suffix=".pt")
+        os.close(fd)
+        legacy_payload = {
+            "action_dim": np.int64(2),
+            "reward_scale": np.float32(1.5),
+        }
+        try:
+            torch.save(legacy_payload, path)
+            obj = safe_torch_load(path, map_location="cpu", weights_only=True)
+            self.assertEqual(int(obj["action_dim"]), 2)
+            self.assertAlmostEqual(float(obj["reward_scale"]), 1.5, places=6)
+        finally:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
     def test_safe_torch_load_rejects_unsafe_fallback_opt_in(self):
         fd, path = tempfile.mkstemp(suffix=".pt")
         os.close(fd)

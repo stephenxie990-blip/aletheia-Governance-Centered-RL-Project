@@ -2170,6 +2170,90 @@ class TestRunTrainContracts(unittest.TestCase):
             self.assertAlmostEqual(float(eval_records[0]["eval_reward"]), 123.0, places=6)
             self.assertAlmostEqual(float(eval_records[0]["current_checkpoint_reward"]), 123.0, places=6)
 
+    def test_run_train_raises_when_best_checkpoint_reload_fails_after_training(self):
+        agent = _DummyAgent()
+        train_env = _CountingEnv(done_after=2)
+        eval_env = _CountingEnv(done_after=2)
+
+        def fake_create_agent(env, config_overrides=None, device=None, seed=None):
+            del env, config_overrides, device, seed
+            return agent
+
+        def fake_create_replay_buffer(capacity, store_obs=False):
+            del store_obs
+            return _DummyBuffer(capacity=capacity)
+
+        def fake_evaluate_agent(env_obj, eval_agent, episodes, max_steps=1000):
+            del env_obj, eval_agent, episodes, max_steps
+            return {
+                "mean": 123.0,
+                "std": 0.0,
+                "min": 123.0,
+                "max": 123.0,
+                "mean_length": 2.0,
+                "telemetry": {},
+            }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = SimpleNamespace(
+                env="Dummy-v0",
+                device="cpu",
+                seed=7,
+                render=False,
+                verbose=False,
+                load=None,
+                save=tmpdir,
+                resume_from=None,
+                steps=64,
+                update_steps=2,
+                collect_steps_per_cycle=32,
+                train_steps_per_cycle=1,
+                wm_seq_len=1,
+                wm_batch_size=1,
+                imagination_horizon=3,
+                imagination_batch_size=1,
+                rl_batch_size=1,
+                buffer_capacity=8,
+                pretrain_ratio=0.0,
+                warmup_ratio=0.0,
+                imagination_only=False,
+                imag_ratio_start=0.0,
+                imag_ratio_end=0.0,
+                imag_ratio_max=0.0,
+                imag_ratio_ramp_steps=1,
+                imag_gradient="dynamics",
+                imag_gradient_mix=0.0,
+                actor_analytic_weight=1.0,
+                actor_reinforce_aux_weight_discrete=0.1,
+                use_reward_ema=True,
+                log_interval=1000,
+                eval_interval=1,
+                save_interval=1,
+                eval_episodes=2,
+                eval_max_steps=5,
+                eval_only=False,
+                enable_eval=True,
+                overrides=None,
+                argv=["scripts/cartpole_train.py", "--steps", "64"],
+            )
+            with mock.patch.object(api, "create_agent", side_effect=fake_create_agent), \
+                 mock.patch.object(api, "create_agent_rollout_collector", return_value=object()), \
+                 mock.patch.object(api, "_evaluate_agent", side_effect=fake_evaluate_agent), \
+                 mock.patch.object(api, "load_agent", side_effect=RuntimeError("best reload boom")), \
+                 mock.patch.object(train_mod, "TrainingLoop", _FakeTrainingLoop), \
+                 mock.patch.object(train_mod, "create_replay_buffer", side_effect=fake_create_replay_buffer):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "best checkpoint",
+                ):
+                    api.run_train(
+                        args,
+                        input_spec={"env": train_env, "eval_env": eval_env},
+                    )
+
+            self.assertTrue((Path(tmpdir) / "best.pt").exists())
+            self.assertFalse((Path(tmpdir) / "summary.json").exists())
+
     def test_run_train_maps_env_step_budget_to_full_update_cycles(self):
         agent = _DummyAgent()
         train_env = _CountingEnv(done_after=2)
@@ -6257,6 +6341,49 @@ class TestRunTrainContracts(unittest.TestCase):
             **asdict(expected_train),
             **expected_bridge,
         })
+        self.assertEqual(loaded_agent.load_calls, [(str(ckpt_path), True, False)])
+
+    def test_load_agent_accepts_checkpoint_bootstrap_bundle_with_numpy_scalar_metadata(self):
+        env = _CountingEnv(done_after=2)
+        create_calls = []
+
+        class _LoadedAgent:
+            def __init__(self):
+                self.load_calls = []
+
+            def load(self, path, strict=True, allow_unsafe_fallback=False):
+                self.load_calls.append((path, strict, allow_unsafe_fallback))
+
+        loaded_agent = _LoadedAgent()
+
+        def fake_create_agent(env_obj, config_overrides=None, device=None, seed=None):
+            create_calls.append((env_obj, config_overrides, device, seed))
+            return loaded_agent
+
+        checkpoint = _make_minimal_agent_checkpoint(
+            agent_bootstrap_bundle={
+                "train": {"buffer_size": 123, "batch_size": 8},
+                "bootstrap_env_profile": {
+                    "obs_shape": [4],
+                    "action_dim": np.int64(2),
+                },
+            },
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ckpt_path = Path(tmpdir) / "best.pt"
+            torch.save(checkpoint, ckpt_path)
+            with mock.patch.object(api, "create_agent", side_effect=fake_create_agent):
+                restored = api.load_agent(str(ckpt_path), env=env, device="cpu")
+
+        self.assertIs(restored, loaded_agent)
+        self.assertEqual(len(create_calls), 1)
+        _, config_overrides, device, seed = create_calls[0]
+        self.assertEqual(device, "cpu")
+        self.assertIsNone(seed)
+        self.assertEqual(config_overrides["buffer_size"], 123)
+        self.assertEqual(config_overrides["batch_size"], 8)
+        self.assertEqual(int(config_overrides["_env_profile"]["action_dim"]), 2)
         self.assertEqual(loaded_agent.load_calls, [(str(ckpt_path), True, False)])
 
     def test_load_agent_rejects_legacy_config_bundle_payload(self):

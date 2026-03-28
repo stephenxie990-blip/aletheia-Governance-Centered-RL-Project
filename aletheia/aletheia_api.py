@@ -4418,8 +4418,10 @@ def run_train(
                 episodes=int(getattr(args, "eval_episodes", 10)),
                 max_steps=int(getattr(args, "eval_max_steps", 1000)),
             )
-        except Exception:
-            final_best = None
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to reload or evaluate best checkpoint for final artifact promotion: {best_path}"
+            ) from exc
 
     final_model_source = "current"
     if (

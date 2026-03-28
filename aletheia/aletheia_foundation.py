@@ -596,18 +596,20 @@ def _patch_numpy_safe_globals() -> None:
 
         safe_types = [np.generic, np.dtype, np.ndarray, EnvProfile, *dtype_safe_types]
 
-        # np._core.multiarray._reconstruct 仅在 numpy >= 2.0 存在
-        # numpy < 2.0 使用 np.core.multiarray._reconstruct
-        for attr_path in ("_core.multiarray._reconstruct", "core.multiarray._reconstruct"):
-            parts = attr_path.split(".")
-            obj = np
-            for part in parts:
-                obj = getattr(obj, part, None)
-                if obj is None:
+        for attr_paths in (
+            ("_core.multiarray._reconstruct", "core.multiarray._reconstruct"),
+            ("_core.multiarray.scalar", "core.multiarray.scalar"),
+        ):
+            for attr_path in attr_paths:
+                parts = attr_path.split(".")
+                obj = np
+                for part in parts:
+                    obj = getattr(obj, part, None)
+                    if obj is None:
+                        break
+                if obj is not None:
+                    safe_types.append(obj)
                     break
-            if obj is not None:
-                safe_types.append(obj)
-                break  # 找到一个即可
 
         torch.serialization.add_safe_globals(safe_types)
     except (AttributeError, ImportError, TypeError):
