@@ -60,14 +60,14 @@ def _normalize_restore_policy(
     restore_policy: Optional[AgentCheckpointRestorePolicy],
 ) -> AgentCheckpointRestorePolicy:
     if restore_policy is None:
-        mode = "strict" if strict else "compatible"
         return AgentCheckpointRestorePolicy(
-            required_component_restore_mode=mode,
-            optional_component_restore_mode=mode,
+            required_component_restore_mode="strict",
+            optional_component_restore_mode=("strict" if strict else "compatible"),
         )
     if not isinstance(restore_policy, AgentCheckpointRestorePolicy):
         raise TypeError("restore_policy must be an AgentCheckpointRestorePolicy.")
     return restore_policy.normalized()
+
 
 def build_agent_checkpoint_payload(
     handle: Any,
@@ -111,32 +111,42 @@ def restore_agent_checkpoint_modules(
 ) -> int:
     """Restore model component states from the canonical agent checkpoint payload."""
     policy = _normalize_restore_policy(strict=strict, restore_policy=restore_policy)
+    required_restore_mode = (
+        policy.required_component_restore_mode
+        if policy.restore_required_components
+        else "skip"
+    )
+    optional_restore_mode = (
+        policy.optional_component_restore_mode
+        if policy.restore_optional_components
+        else "skip"
+    )
 
     required_report = restore_state_dict_sections(
         checkpoint,
         collect_attr_sections(handle, _REQUIRED_COMPONENT_FIELDS),
-        strict=strict,
+        strict=None,
         section_restore_modes={
-            field: (
-                policy.required_component_restore_mode
-                if policy.restore_required_components
-                else "skip"
-            )
+            field: required_restore_mode
+            for field in _REQUIRED_COMPONENT_FIELDS
+        },
+        section_load_kwargs={
+            field: {"strict": required_restore_mode == "strict"}
             for field in _REQUIRED_COMPONENT_FIELDS
         },
     )
     optional_report = restore_state_dict_sections(
         checkpoint,
         collect_attr_sections(handle, _OPTIONAL_COMPONENT_FIELDS, optional=True),
-        strict=strict,
+        strict=None,
         skip_missing_sections=True,
         skip_missing_objects=True,
         section_restore_modes={
-            field: (
-                policy.optional_component_restore_mode
-                if policy.restore_optional_components
-                else "skip"
-            )
+            field: optional_restore_mode
+            for field in _OPTIONAL_COMPONENT_FIELDS
+        },
+        section_load_kwargs={
+            field: {"strict": optional_restore_mode == "strict"}
             for field in _OPTIONAL_COMPONENT_FIELDS
         },
     )

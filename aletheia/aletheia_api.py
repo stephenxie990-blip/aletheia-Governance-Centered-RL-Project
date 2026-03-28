@@ -2297,7 +2297,11 @@ class AgentHandle:
         *,
         allow_unsafe_fallback: bool = False,
     ) -> None:
-        """Load a checkpoint from *path*."""
+        """Load a checkpoint from *path*.
+
+        ``strict=False`` only relaxes optional component restores. Required
+        components still restore strictly by default.
+        """
         checkpoint = read_checkpoint(
             path,
             map_location=self.device,
@@ -2311,10 +2315,6 @@ class AgentHandle:
             self,
             checkpoint,
             strict=strict,
-            restore_policy=AgentCheckpointRestorePolicy(
-                required_component_restore_mode=("strict" if strict else "compatible"),
-                optional_component_restore_mode=("strict" if strict else "compatible"),
-            ),
             checkpoint_path=path,
         )
         logger.info("Model loaded from %s", path)

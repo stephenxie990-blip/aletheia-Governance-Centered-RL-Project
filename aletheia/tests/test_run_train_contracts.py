@@ -28,6 +28,7 @@ from aletheia.aletheia_foundation import (
     set_activation_validation_mode,
 )
 from aletheia._agent_checkpoint_schema import (
+    AgentCheckpointRestorePolicy,
     build_agent_checkpoint_payload,
     restore_agent_checkpoint_modules,
 )
@@ -5523,13 +5524,41 @@ class TestRunTrainContracts(unittest.TestCase):
             strict=False,
         )
 
-        handle.world_model.load_state_dict.assert_called_once_with({"wm": 1}, strict=False)
-        handle.actor.load_state_dict.assert_called_once_with({"actor": 2}, strict=False)
-        handle.critic.load_state_dict.assert_called_once_with({"critic": 3}, strict=False)
+        handle.world_model.load_state_dict.assert_called_once_with({"wm": 1}, strict=True)
+        handle.actor.load_state_dict.assert_called_once_with({"actor": 2}, strict=True)
+        handle.critic.load_state_dict.assert_called_once_with({"critic": 3}, strict=True)
         handle.router.load_state_dict.assert_called_once_with({"router": 4}, strict=False)
         self.assertEqual(step_count, 7)
 
-    def test_restore_agent_checkpoint_modules_compatible_mode_skips_incompatible_required_component(self):
+    def test_restore_agent_checkpoint_modules_non_strict_still_fails_fast_on_incompatible_required_component(self):
+        handle = api.AgentHandle.__new__(api.AgentHandle)
+        handle.world_model = mock.Mock()
+        handle.actor = mock.Mock()
+        handle.critic = mock.Mock()
+        handle.router = None
+        handle.will = None
+        handle.world_model.load_state_dict.side_effect = RuntimeError("shape mismatch")
+
+        with mock.patch("aletheia._agent_checkpoint_schema.logger.warning") as warning_mock:
+            with self.assertRaisesRegex(RuntimeError, "shape mismatch"):
+                restore_agent_checkpoint_modules(
+                    handle,
+                    {
+                        "world_model": {"wm": 1},
+                        "actor": {"actor": 2},
+                        "critic": {"critic": 3},
+                        "step_count": 7,
+                    },
+                    strict=False,
+                    checkpoint_path="agent.pt",
+                )
+
+        handle.world_model.load_state_dict.assert_called_once_with({"wm": 1}, strict=True)
+        handle.actor.load_state_dict.assert_not_called()
+        handle.critic.load_state_dict.assert_not_called()
+        warning_mock.assert_not_called()
+
+    def test_restore_agent_checkpoint_modules_explicit_compatible_policy_can_skip_incompatible_required_component(self):
         handle = api.AgentHandle.__new__(api.AgentHandle)
         handle.world_model = mock.Mock()
         handle.actor = mock.Mock()
@@ -5547,7 +5576,11 @@ class TestRunTrainContracts(unittest.TestCase):
                     "critic": {"critic": 3},
                     "step_count": 7,
                 },
-                strict=False,
+                strict=True,
+                restore_policy=AgentCheckpointRestorePolicy(
+                    required_component_restore_mode="compatible",
+                    optional_component_restore_mode="compatible",
+                ),
                 checkpoint_path="agent.pt",
             )
 
@@ -5589,9 +5622,9 @@ class TestRunTrainContracts(unittest.TestCase):
             map_location=handle.device,
             allow_unsafe_fallback=True,
         )
-        handle.world_model.load_state_dict.assert_called_once_with({"wm": 1}, strict=False)
-        handle.actor.load_state_dict.assert_called_once_with({"actor": 2}, strict=False)
-        handle.critic.load_state_dict.assert_called_once_with({"critic": 3}, strict=False)
+        handle.world_model.load_state_dict.assert_called_once_with({"wm": 1}, strict=True)
+        handle.actor.load_state_dict.assert_called_once_with({"actor": 2}, strict=True)
+        handle.critic.load_state_dict.assert_called_once_with({"critic": 3}, strict=True)
         handle.router.load_state_dict.assert_called_once_with({"router": 4}, strict=False)
         handle.will.load_state_dict.assert_called_once_with({"will": 5}, strict=False)
         self.assertEqual(handle._step_count, 7)
