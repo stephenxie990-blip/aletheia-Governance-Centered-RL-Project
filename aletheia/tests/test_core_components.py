@@ -698,6 +698,19 @@ class TestConsistencyAuditorStrictFailures(unittest.TestCase):
 
         self.assertGreater(float(report.msc_loss.item()), 0.0)
 
+    def test_config_rejects_enabling_mhc_and_msc_together(self):
+        with self.assertRaisesRegex(ValueError, "MHC and MSC cannot both be enabled"):
+            ConsistencyAuditorConfig(
+                mhc=MHCConfig(enabled=True),
+                msc=MSCConfig(enabled=True),
+            )
+
+    def test_config_rejects_nst_without_msc_support(self):
+        with self.assertRaisesRegex(ValueError, "NST requires MSC to be enabled"):
+            ConsistencyAuditorConfig(
+                nst=NSTConfig(enabled=True),
+            )
+
 
 class _FakeShortcutTransitionOut:
     def __init__(self, h: torch.Tensor, z: torch.Tensor):

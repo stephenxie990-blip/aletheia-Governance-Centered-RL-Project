@@ -1041,6 +1041,16 @@ class ConsistencyAuditorConfig:
     remaining_steps_margin: int = 10
     no_done_warning_threshold: float = 0.5
 
+    def __post_init__(self) -> None:
+        self.validate()
+
+    def validate(self) -> "ConsistencyAuditorConfig":
+        if self.mhc.enabled and self.msc.enabled:
+            raise ValueError("MHC and MSC cannot both be enabled in ConsistencyAuditorConfig")
+        if self.nst.enabled and not self.msc.enabled:
+            raise ValueError("NST requires MSC to be enabled in ConsistencyAuditorConfig")
+        return self
+
     @property
     def any_enabled(self) -> bool:
         return any(c.enabled for c in (self.mhc, self.msc, self.nst, self.sc))

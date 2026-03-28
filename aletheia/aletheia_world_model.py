@@ -5475,6 +5475,7 @@ class ConsistencyAuditor(nn.Module):
     ):
         super().__init__()
         self.config = config
+        self.config.validate()
 
         self.__dict__['_mhc_head'] = mhc_head
         self.__dict__['_msc_head'] = msc_head
@@ -5582,7 +5583,7 @@ class ConsistencyAuditor(nn.Module):
         ).to(trajectory.device)
 
     def _compute_mhc(self, trajectory, metrics, weights) -> Tensor:
-        if not self.mhc_enabled or self.msc_enabled:
+        if not self.mhc_enabled:
             return torch.tensor(0.0, device=trajectory.device)
         loss, m = compute_mhc_loss(
             self._mhc_head,
@@ -7507,6 +7508,7 @@ class WorldModel(nn.Module):
             auditor_config.nst.enabled = True
         if self._sc_loss_module:
             auditor_config.sc.enabled = True
+        auditor_config.validate()
         
         auditor = ConsistencyAuditor(
             config=auditor_config,
