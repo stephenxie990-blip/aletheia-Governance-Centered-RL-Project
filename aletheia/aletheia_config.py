@@ -2368,9 +2368,6 @@ class TrainingConfig:
         # 配置模式
         if str(self.config_mode).lower() == "strict":
             self.validation_mode = "strict"
-        elif str(self.validation_mode).lower() == "strict" and \
-                str(self.config_mode).lower() == "compat":
-            self.validation_mode = "warn"
 
         # [FIX-1] 每次 __post_init__ 独立的同步追踪集，避免跨实例污染
         synced: Set[frozenset] = set()

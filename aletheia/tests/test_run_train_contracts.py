@@ -24,6 +24,8 @@ import aletheia.aletheia_api as api
 import aletheia.aletheia_train as train_mod
 from aletheia.aletheia_foundation import (
     make_config_policy_overrides_for_env,
+    get_activation_class,
+    set_activation_validation_mode,
 )
 from aletheia._agent_checkpoint_schema import (
     build_agent_checkpoint_payload,
@@ -977,6 +979,27 @@ class TestRunTrainContracts(unittest.TestCase):
                     "warmup_steps": 0,
                 }
             )
+
+    def test_training_config_preserves_explicit_strict_validation_in_compat_mode(self):
+        cfg = TrainingConfig(
+            config_mode="compat",
+            validation_mode="strict",
+            total_steps=4,
+            num_train_steps=4,
+            total_env_steps=32,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+        )
+
+        self.assertEqual(str(cfg.validation_mode), "strict")
+
+    def test_unknown_activation_raises_in_explicit_strict_validation_mode(self):
+        set_activation_validation_mode("strict")
+        try:
+            with self.assertRaisesRegex(ValueError, "Unknown activation"):
+                get_activation_class("definitely_not_a_real_activation")
+        finally:
+            set_activation_validation_mode("warn")
 
     def test_normalize_training_config_compat_rejects_legacy_field_aliases_without_opt_in(self):
         with self.assertRaisesRegex(
@@ -4393,7 +4416,7 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertAlmostEqual(float(cfg.adaptive_imag_compensation_post_solved_drift_damping_wm_scale), 0.5, places=6)
         self.assertAlmostEqual(float(cfg.adaptive_imag_compensation_post_solved_drift_damping_critic_scale), 0.6, places=6)
 
-    def test_training_state_manager_load_falls_back_to_non_strict_model_restore(self):
+    def test_training_state_manager_load_requires_explicit_compatible_model_restore(self):
         class _SaveModel(nn.Module):
             def __init__(self):
                 super().__init__()
@@ -4419,11 +4442,21 @@ class TestRunTrainContracts(unittest.TestCase):
             ckpt_path = str(Path(tmpdir) / "trainer_state.pt")
             train_mod.TrainingStateManager.save(state, ckpt_path, model=save_model)
             raw_checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+            with self.assertRaisesRegex(RuntimeError, "model state is incompatible"):
+                train_mod.TrainingStateManager.load(
+                    ckpt_path,
+                    config=config,
+                    device=device,
+                    model=load_model,
+                )
             restored = train_mod.TrainingStateManager.load(
                 ckpt_path,
                 config=config,
                 device=device,
                 model=load_model,
+                restore_policy=TrainingCheckpointRestorePolicy(
+                    model_restore_mode="compatible"
+                ),
             )
 
         self.assertEqual(restored.global_step, 0)
