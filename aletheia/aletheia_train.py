@@ -1050,7 +1050,9 @@ def compute_discounted_returns_to_go(
 
 def get_default_config() -> TrainingConfig:
     """Return a fresh ``TrainingConfig`` with default values."""
-    return TrainingConfig()
+    cfg = TrainingConfig()
+    set_activation_validation_mode(cfg.validation_mode)
+    return cfg
 
 
 def create_config_from_args(**kwargs) -> TrainingConfig:
@@ -1077,6 +1079,7 @@ def create_config_from_args(**kwargs) -> TrainingConfig:
                     setattr(sub, sk, sv)
         elif hasattr(config, key):
             setattr(config, key, value)
+    set_activation_validation_mode(config.validation_mode)
     return config
 
 

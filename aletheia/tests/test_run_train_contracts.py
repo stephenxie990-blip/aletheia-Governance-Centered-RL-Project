@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import copy
 import io
+import warnings
 from dataclasses import asdict
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -1405,13 +1406,53 @@ class TestRunTrainContracts(unittest.TestCase):
 
         self.assertEqual(str(cfg.validation_mode), "strict")
 
+    def test_training_config_defaults_to_strict_validation(self):
+        cfg = TrainingConfig()
+        self.assertEqual(str(cfg.validation_mode), "strict")
+
+    def test_training_config_preserves_explicit_warn_validation_in_compat_mode(self):
+        cfg = TrainingConfig(
+            config_mode="compat",
+            validation_mode="warn",
+            total_steps=4,
+            num_train_steps=4,
+            total_env_steps=32,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+        )
+
+        self.assertEqual(str(cfg.validation_mode), "warn")
+
+    def test_unknown_activation_raises_under_default_training_config_validation(self):
+        previous_mode = "warn"
+        set_activation_validation_mode(previous_mode)
+        try:
+            cfg = train_mod._normalize_training_config(None)
+            self.assertEqual(str(cfg.validation_mode), "strict")
+            with self.assertRaisesRegex(ValueError, "Unknown activation"):
+                get_activation_class("definitely_not_a_real_activation")
+        finally:
+            set_activation_validation_mode(previous_mode)
+
     def test_unknown_activation_raises_in_explicit_strict_validation_mode(self):
         set_activation_validation_mode("strict")
         try:
             with self.assertRaisesRegex(ValueError, "Unknown activation"):
                 get_activation_class("definitely_not_a_real_activation")
         finally:
-            set_activation_validation_mode("warn")
+            set_activation_validation_mode("strict")
+
+    def test_unknown_activation_warn_mode_requires_explicit_opt_in(self):
+        set_activation_validation_mode("warn")
+        try:
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                activation_cls = get_activation_class("definitely_not_a_real_activation")
+            self.assertIs(activation_cls, nn.SiLU)
+            self.assertEqual(len(caught), 1)
+            self.assertIn("fallback to SiLU", str(caught[0].message))
+        finally:
+            set_activation_validation_mode("strict")
 
     def test_normalize_training_config_compat_rejects_legacy_field_aliases_without_opt_in(self):
         with self.assertRaisesRegex(
@@ -6357,6 +6398,14 @@ class TestRunTrainContracts(unittest.TestCase):
                 config_overrides={"router_overrides": {"router_mode": "hard"}},
                 device="cpu",
                 seed=0,
+            )
+
+    def test_agent_factory_rejects_unknown_component_override_keys(self):
+        with self.assertRaisesRegex(ValueError, "Unknown override keys"):
+            api.AgentFactory._validate_overrides(
+                {"router_mode": "hard", "definitely_unknown_router_key": 1},
+                frozenset({"router_mode"}),
+                "Router",
             )
 
     def test_real_agent_save_load_roundtrip_preserves_deterministic_action(self):

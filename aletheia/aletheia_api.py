@@ -683,11 +683,13 @@ class AgentFactory:
                 invalid.append(key)
 
         if invalid:
-            logger.warning(
-                "[%s] Ignoring unknown override keys: %s. Valid: %s",
-                component_name,
-                invalid,
-                sorted(whitelist),
+            raise ValueError(
+                "[%s] Unknown override keys: %s. Valid: %s"
+                % (
+                    component_name,
+                    invalid,
+                    sorted(whitelist),
+                )
             )
 
         return valid
@@ -1516,8 +1518,7 @@ def resolve_device(device_arg: Optional[str] = None) -> torch.device:
 
     if device_lower in ("cuda", "gpu"):
         if not torch.cuda.is_available():
-            logger.warning("CUDA not available, falling back to CPU")
-            return torch.device("cpu")
+            raise RuntimeError("CUDA requested but not available")
         return torch.device("cuda")
 
     if device_lower == "cpu":
@@ -1525,8 +1526,7 @@ def resolve_device(device_arg: Optional[str] = None) -> torch.device:
 
     if device_lower.startswith("cuda:"):
         if not torch.cuda.is_available():
-            logger.warning("CUDA not available, falling back to CPU")
-            return torch.device("cpu")
+            raise RuntimeError(f"CUDA requested but not available: {device_arg}")
         return torch.device(device_lower)
 
     if device_lower == "mps":
@@ -1537,12 +1537,12 @@ def resolve_device(device_arg: Optional[str] = None) -> torch.device:
             and mps_backend.is_available()
         )
         if not mps_available:
-            logger.warning("MPS not available, falling back to CPU")
-            return torch.device("cpu")
+            raise RuntimeError("MPS requested but not available")
         return torch.device("mps")
 
-    logger.warning("Unknown device '%s', falling back to CPU", device_arg)
-    return torch.device("cpu")
+    raise ValueError(
+        f"Unknown device '{device_arg}'. Expected auto/cuda/cpu/mps or cuda:<id>."
+    )
 
 
 def set_global_seed(seed: int) -> None:

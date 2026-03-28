@@ -1989,7 +1989,7 @@ class TrainingConfig:
     compile_wm_encoder: bool = True
     compile_wm_projection: bool = True
 
-    validation_mode: Literal["warn", "strict", "off"] = "warn"
+    validation_mode: Literal["warn", "strict", "off"] = "strict"
     config_mode: Literal["compat", "strict"] = "compat"
     config_version: str = "v5.2.5"
     config_hash: Optional[str] = None

@@ -186,7 +186,7 @@ _ACTIVATION_MAP = {
     "leaky_relu": nn.LeakyReLU,
 }
 
-_ACTIVATION_VALIDATION_MODE = "warn"
+_ACTIVATION_VALIDATION_MODE = "strict"
 
 
 def set_activation_validation_mode(mode: str) -> None:

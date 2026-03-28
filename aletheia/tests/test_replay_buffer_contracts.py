@@ -560,6 +560,20 @@ class TestBufferAdapterTerminationSemantics(unittest.TestCase):
 
 
 class TestResolveDevice(unittest.TestCase):
+    def test_resolve_auto_stays_compatible_when_cuda_unavailable(self):
+        with patch.object(torch.cuda, "is_available", return_value=False):
+            dev = resolve_device("auto")
+        self.assertEqual(dev.type, "cpu")
+
+    def test_resolve_cuda_raises_when_unavailable(self):
+        with patch.object(torch.cuda, "is_available", return_value=False):
+            with self.assertRaisesRegex(RuntimeError, "CUDA requested but not available"):
+                resolve_device("cuda")
+
+    def test_resolve_unknown_device_raises(self):
+        with self.assertRaisesRegex(ValueError, "Unknown device"):
+            resolve_device("definitely_not_a_real_device")
+
     def test_resolve_mps_when_available(self):
         mps_backend = getattr(torch.backends, "mps", None)
         if mps_backend is None or not hasattr(mps_backend, "is_available"):
