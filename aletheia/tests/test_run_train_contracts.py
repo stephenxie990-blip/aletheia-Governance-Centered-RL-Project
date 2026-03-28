@@ -1318,6 +1318,7 @@ class TestRunTrainContracts(unittest.TestCase):
             self.assertTrue(bool(policy.restore_model))
             self.assertTrue(bool(policy.restore_optimizers))
             self.assertTrue(bool(policy.restore_buffer))
+            self.assertEqual(str(policy.model_restore_mode), "strict")
             self.assertEqual(str(policy.optimizer_restore_mode), "auto")
             self.assertTrue((Path(tmpdir) / "resume_latest.pt").exists())
             self.assertTrue((Path(tmpdir) / "trainer_state_final.pt").exists())
@@ -4676,6 +4677,72 @@ class TestRunTrainContracts(unittest.TestCase):
         )
         buffer.load_state_dict.assert_called_once_with({"buffer": 3})
 
+    def test_restore_training_checkpoint_payload_raises_on_model_mismatch_by_default(self):
+        config = TrainingConfig()
+        state = train_mod.TrainingState(config=config, device=torch.device("cpu"))
+        model = mock.Mock()
+        model.load_state_dict.side_effect = RuntimeError("shape mismatch")
+        opt_bundle = mock.Mock()
+
+        with self.assertRaisesRegex(RuntimeError, "model state is incompatible"):
+            restore_training_checkpoint_payload(
+                {
+                    "training_state": state.state_dict(),
+                    "effective_training_config": config.to_dict(),
+                    "model": {"weight": 1},
+                    "optimizer_bundle": {"optimizer": 2},
+                },
+                state=state,
+                model=model,
+                opt_bundle=opt_bundle,
+                checkpoint_path="trainer_state.pt",
+                current_effective_training_config=config.to_dict(),
+            )
+
+        model.load_state_dict.assert_called_once_with({"weight": 1})
+        opt_bundle.load_state_dict.assert_not_called()
+
+    def test_restore_training_checkpoint_payload_compatible_model_restore_mode_uses_non_strict_load(self):
+        config = TrainingConfig()
+        state = train_mod.TrainingState(config=config, device=torch.device("cpu"))
+        model = mock.Mock()
+
+        restore_training_checkpoint_payload(
+            {
+                "training_state": state.state_dict(),
+                "effective_training_config": config.to_dict(),
+                "model": {"weight": 1},
+            },
+            state=state,
+            model=model,
+            checkpoint_path="trainer_state.pt",
+            restore_policy=TrainingCheckpointRestorePolicy(model_restore_mode="compatible"),
+            current_effective_training_config=config.to_dict(),
+        )
+
+        model.load_state_dict.assert_called_once_with({"weight": 1}, strict=False)
+
+    def test_restore_training_checkpoint_payload_raises_when_component_bootstrap_fails(self):
+        config = TrainingConfig()
+        state = train_mod.TrainingState(config=config, device=torch.device("cpu"))
+        model = mock.Mock()
+        model.world_model = SimpleNamespace(
+            _ensure_v45_components=mock.Mock(side_effect=RuntimeError("ensure boom"))
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "ensure_v45_components failed"):
+            restore_training_checkpoint_payload(
+                {
+                    "training_state": state.state_dict(),
+                    "effective_training_config": config.to_dict(),
+                    "model": {"weight": 1},
+                },
+                state=state,
+                model=model,
+                checkpoint_path="trainer_state.pt",
+                current_effective_training_config=config.to_dict(),
+            )
+
     def test_restore_training_checkpoint_payload_auto_downgrades_optimizer_restore_on_config_drift(self):
         config = TrainingConfig(
             total_steps=12,
@@ -5743,6 +5810,8 @@ class TestRunTrainContracts(unittest.TestCase):
                 "7",
                 "--resume-from",
                 "resume.pt",
+                "--resume-model-restore-mode",
+                "compatible",
                 "--resume-optimizer-restore-mode",
                 "skip",
                 "--resume-restore-layers",
@@ -5754,6 +5823,7 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertEqual(parsed_args.env, "CartPole-v1")
         self.assertEqual(parsed_args.steps, 7)
         self.assertEqual(parsed_args.resume_from, "resume.pt")
+        self.assertEqual(parsed_args.resume_model_restore_mode, "compatible")
         self.assertEqual(parsed_args.resume_optimizer_restore_mode, "skip")
         self.assertEqual(parsed_args.resume_restore_layers, "model,buffer")
 

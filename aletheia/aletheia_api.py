@@ -4194,6 +4194,9 @@ def run_train(
             restore_model="model" in enabled_layers,
             restore_optimizers="optimizers" in enabled_layers,
             restore_buffer="buffer" in enabled_layers,
+            model_restore_mode=str(
+                getattr(args, "resume_model_restore_mode", "strict") or "strict"
+            ).strip().lower(),
             optimizer_restore_mode=str(
                 getattr(args, "resume_optimizer_restore_mode", "auto") or "auto"
             ).strip().lower(),
@@ -4412,6 +4415,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--load", type=str, default=None, help="Load checkpoint")
     parser.add_argument("--save", type=str, default=None, help="Save checkpoint directory or file")
     parser.add_argument("--resume-from", dest="resume_from", type=str, default=None, help="Resume from a trainer-state checkpoint")
+    parser.add_argument(
+        "--resume-model-restore-mode",
+        type=str,
+        default="strict",
+        choices=["strict", "compatible"],
+        help="Model restore mode for trainer-state resume",
+    )
     parser.add_argument(
         "--resume-optimizer-restore-mode",
         type=str,

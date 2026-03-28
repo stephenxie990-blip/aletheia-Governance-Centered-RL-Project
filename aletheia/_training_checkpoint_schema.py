@@ -12,6 +12,7 @@ from ._checkpoint_schema_primitives import (
 
 logger = logging.getLogger("aletheia.training_checkpoint_schema")
 _VALID_OPTIMIZER_RESTORE_MODES = {"auto", "strict", "compatible", "skip"}
+_VALID_MODEL_RESTORE_MODES = {"strict", "compatible"}
 
 
 @dataclass(frozen=True)
@@ -20,10 +21,17 @@ class TrainingCheckpointRestorePolicy:
     restore_model: bool = True
     restore_optimizers: bool = True
     restore_buffer: bool = True
+    model_restore_mode: str = "strict"
     optimizer_restore_mode: str = "auto"
 
     def normalized(self) -> "TrainingCheckpointRestorePolicy":
+        model_mode = str(self.model_restore_mode or "strict").strip().lower()
         mode = str(self.optimizer_restore_mode or "auto").strip().lower()
+        if model_mode not in _VALID_MODEL_RESTORE_MODES:
+            raise ValueError(
+                "model_restore_mode must be one of "
+                f"{sorted(_VALID_MODEL_RESTORE_MODES)}."
+            )
         if mode not in _VALID_OPTIMIZER_RESTORE_MODES:
             raise ValueError(
                 "optimizer_restore_mode must be one of "
@@ -34,6 +42,7 @@ class TrainingCheckpointRestorePolicy:
             restore_model=bool(self.restore_model),
             restore_optimizers=bool(self.restore_optimizers),
             restore_buffer=bool(self.restore_buffer),
+            model_restore_mode=model_mode,
             optimizer_restore_mode=mode,
         )
 
@@ -139,37 +148,27 @@ def restore_training_checkpoint_payload(
                 optimizer_restore_reason,
             )
 
-    model_used_non_strict_fallback = False
     if policy.restore_model and model is not None and "model" in checkpoint:
         world_model = getattr(model, "world_model", None)
         if world_model is not None and hasattr(world_model, "_ensure_v45_components"):
             try:
                 world_model._ensure_v45_components()
-            except Exception:
-                pass
+            except Exception as exc:
+                raise RuntimeError(
+                    "Training checkpoint restore failed for "
+                    f"{checkpoint_path or '<checkpoint>'}: "
+                    f"world_model ensure_v45_components failed: {exc}"
+                ) from exc
         try:
-            model.load_state_dict(checkpoint["model"])
+            if policy.model_restore_mode == "compatible":
+                model.load_state_dict(checkpoint["model"], strict=False)
+            else:
+                model.load_state_dict(checkpoint["model"])
         except RuntimeError as exc:
-            model_used_non_strict_fallback = True
-            logger.warning(
-                "Training checkpoint restore falling back to non-strict model load for %s: %s",
-                checkpoint_path or "<checkpoint>",
-                exc,
-            )
-            model.load_state_dict(checkpoint["model"], strict=False)
-
-    if (
-        policy.restore_optimizers
-        and policy.optimizer_restore_mode == "auto"
-        and model_used_non_strict_fallback
-        and optimizer_restore_mode == "strict"
-    ):
-        optimizer_restore_mode = "compatible"
-        logger.warning(
-            "Training checkpoint restore upgraded optimizer mode to compatible for %s: "
-            "model restore required non-strict fallback",
-            checkpoint_path or "<checkpoint>",
-        )
+            raise RuntimeError(
+                "Training checkpoint restore failed for "
+                f"{checkpoint_path or '<checkpoint>'}: model state is incompatible: {exc}"
+            ) from exc
 
     restore_report = restore_state_dict_sections(
         checkpoint,

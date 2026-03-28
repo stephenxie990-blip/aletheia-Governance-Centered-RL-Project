@@ -14607,7 +14607,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         self.assertTrue(any("behavior_policy_anchor" in item for item in warnings))
         self.assertTrue(any("real_stability_registry" in item for item in warnings))
 
-    def test_resume_from_with_optimizer_drift_auto_skips_incompatible_optimizer_state(self):
+    def test_resume_from_fails_on_model_drift_before_optimizer_restore(self):
         device = torch.device("cpu")
         config = TrainingConfig(
             config_mode="strict",
@@ -14690,29 +14690,8 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             resumed_loop.imagination_engine = _FakeImaginationEngine(device)
             resumed_loop._build_real_batch = lambda: None
 
-            warnings = []
-
-            def _capture_warning(msg, *args, **kwargs):
-                del kwargs
-                warnings.append(msg % args if args else msg)
-
-            with mock.patch(
-                "aletheia._training_checkpoint_schema.logger.warning",
-                side_effect=_capture_warning,
-            ):
+            with self.assertRaisesRegex(RuntimeError, "model state is incompatible"):
                 resumed_loop.run(num_steps=6, data_collector=None, resume_from=ckpt_path)
-
-        self.assertEqual(resumed_loop.global_step, 6)
-        self.assertEqual(len(resumed_loop.buffer.episodes), 1)
-        self.assertTrue(
-            any("non-strict model load" in message for message in warnings)
-        )
-        self.assertTrue(
-            any(
-                "optimizer_bundle" in message and "compatible mode" in message
-                for message in warnings
-            )
-        )
 
     def test_build_real_batch_injects_runtime_compensation_context(self):
         device = torch.device("cpu")
