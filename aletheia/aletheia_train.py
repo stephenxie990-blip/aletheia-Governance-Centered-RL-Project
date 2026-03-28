@@ -9003,7 +9003,7 @@ class TrainingLoop:
                 "issue": "frozen module clone could not be created",
             }
         try:
-            load_result = frozen_module.load_state_dict(module_state_dict, strict=False)
+            load_result = frozen_module.load_state_dict(module_state_dict)
         except Exception as exc:
             return None, {
                 "status": "load_failed",
@@ -9019,7 +9019,7 @@ class TrainingLoop:
                 details.append(f"unexpected_keys={unexpected_keys}")
             return None, {
                 "status": "incompatible_state_dict",
-                "issue": "frozen module state_dict restore was non-strict incompatible: "
+                "issue": "frozen module state_dict restore reported incompatible keys: "
                 + ", ".join(details),
             }
         frozen_module.eval()

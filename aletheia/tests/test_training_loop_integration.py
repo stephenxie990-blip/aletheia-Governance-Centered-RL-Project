@@ -14651,6 +14651,52 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         self.assertTrue(any("behavior_policy_anchor" in item for item in warnings))
         self.assertTrue(any("real_stability_registry" in item for item in warnings))
 
+    def test_frozen_module_restore_uses_strict_load_semantics(self):
+        device = torch.device("cpu")
+        config = TrainingConfig(
+            config_mode="strict",
+            validation_mode="off",
+            total_steps=1,
+            num_train_steps=1,
+            total_env_steps=1,
+            batch_size=1,
+            seq_len=1,
+            wm_seq_len=1,
+            wm_batch_size=1,
+            rl_batch_size=1,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+            imagination_only=True,
+            imagination_horizon=1,
+            log_interval=1000,
+            eval_interval=1000,
+            save_interval=1000,
+        )
+        loop = TrainingLoop(
+            model=_TinyImagModel(),
+            buffer=ReplayBuffer(capacity=2, store_obs=False),
+            config=config,
+            device=device,
+            env=None,
+        )
+        frozen_module = mock.Mock()
+        frozen_module.load_state_dict.return_value = SimpleNamespace(
+            missing_keys=[],
+            unexpected_keys=[],
+        )
+        frozen_module.parameters.return_value = []
+
+        state_dict = {"net.weight": torch.ones((2, 4), dtype=torch.float32)}
+        restored, report = loop._load_frozen_module_restore_result(
+            state_dict,
+            lambda: frozen_module,
+        )
+
+        self.assertIs(restored, frozen_module)
+        frozen_module.load_state_dict.assert_called_once_with(state_dict)
+        frozen_module.eval.assert_called_once_with()
+        self.assertEqual(report["status"], "restored")
+
     def test_resume_from_fails_on_model_drift_before_optimizer_restore(self):
         device = torch.device("cpu")
         config = TrainingConfig(
