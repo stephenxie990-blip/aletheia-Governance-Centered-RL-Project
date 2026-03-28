@@ -14050,7 +14050,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         buffer.add_step(vitals=np.full((4,), 3.0, dtype=np.float32), action=np.array([0.0, 1.0], dtype=np.float32), reward=0.0, done=True, terminated=True, truncated=False, log_prob=0.0)
 
         common = dict(
-            config_mode="strict", validation_mode="off", total_steps=1, num_train_steps=1, total_env_steps=2,
+            config_mode="compat", validation_mode="off", total_steps=1, num_train_steps=1, total_env_steps=2,
             batch_size=1, seq_len=4, wm_seq_len=4, wm_batch_size=1, rl_batch_size=1, wm_pretrain_steps=0,
             warmup_steps=0, imagination_only=True, imagination_horizon=2, imagination_batch_size=1,
             imag_continue_prob_cap=0.95, adaptive_imag_continue_cap=True, adaptive_imag_continue_cap_min=0.80,
@@ -14086,7 +14086,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         buffer.add_step(vitals=np.full((4,), 2.0, dtype=np.float32), action=np.array([1.0, 0.0], dtype=np.float32), reward=1.0, done=False, log_prob=0.0)
         buffer.add_step(vitals=np.full((4,), 3.0, dtype=np.float32), action=np.array([0.0, 1.0], dtype=np.float32), reward=0.0, done=True, terminated=True, truncated=False, log_prob=0.0)
         config = TrainingConfig(
-            config_mode="strict", validation_mode="off", total_steps=1, num_train_steps=1, total_env_steps=2,
+            config_mode="compat", validation_mode="off", total_steps=1, num_train_steps=1, total_env_steps=2,
             batch_size=1, seq_len=4, wm_seq_len=4, wm_batch_size=1, rl_batch_size=1, wm_pretrain_steps=0,
             warmup_steps=0, imagination_only=True, imagination_horizon=2, imagination_batch_size=1,
             imag_continue_prob_cap=0.95, adaptive_imag_continue_cap=True, adaptive_imag_continue_cap_min=0.80,
@@ -14115,7 +14115,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         buffer.add_step(vitals=np.full((4,), 2.0, dtype=np.float32), action=np.array([1.0, 0.0], dtype=np.float32), reward=1.0, done=False, log_prob=0.0)
         buffer.add_step(vitals=np.full((4,), 3.0, dtype=np.float32), action=np.array([0.0, 1.0], dtype=np.float32), reward=0.0, done=True, terminated=True, truncated=False, log_prob=0.0)
         config = TrainingConfig(
-            config_mode="strict", validation_mode="off", total_steps=1, num_train_steps=1, total_env_steps=2,
+            config_mode="compat", validation_mode="off", total_steps=1, num_train_steps=1, total_env_steps=2,
             batch_size=1, seq_len=4, wm_seq_len=4, wm_batch_size=1, rl_batch_size=1, wm_pretrain_steps=0,
             warmup_steps=0, imagination_only=True, imagination_horizon=2, imagination_batch_size=1,
             imag_continue_prob_cap=0.95, adaptive_imag_continue_cap=True, adaptive_imag_continue_cap_min=0.80,
