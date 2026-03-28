@@ -3129,6 +3129,28 @@ def _parse_overrides(overrides_arg: Optional[str]) -> Dict[str, Any]:
     return data
 
 
+@lru_cache(maxsize=1)
+def _run_train_training_only_override_keys() -> frozenset[str]:
+    from .aletheia_config import AGENT_BOOTSTRAP_TRAIN_FIELDS, TrainingConfig
+
+    return frozenset(TrainingConfig.__dataclass_fields__) - frozenset(
+        AGENT_BOOTSTRAP_TRAIN_FIELDS
+    )
+
+
+def _extract_run_train_factory_overrides(overrides: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Keep only create_agent bootstrap/factory overrides at the run_train boundary."""
+    if not overrides:
+        return {}
+
+    training_only_keys = _run_train_training_only_override_keys()
+    return {
+        key: copy.deepcopy(value)
+        for key, value in overrides.items()
+        if key not in training_only_keys
+    }
+
+
 def _resolve_adapter_fn(adapter: Any, name: str) -> Optional[Callable[[Any], Any]]:
     if adapter is None:
         return None
@@ -3416,12 +3438,19 @@ def run_train(
             "adaptive_imag_critic_bootstrap_anchor_contact_cap", 1.0
         )
 
+    factory_overrides = _extract_run_train_factory_overrides(overrides)
+
     try:
         if getattr(args, "load", None):
             agent = load_agent(getattr(args, "load"), env=env, device=device)
             logger.info("Loaded agent from %s", getattr(args, "load"))
         else:
-            agent = create_agent(env, config_overrides=overrides, device=device, seed=seed)
+            agent = create_agent(
+                env,
+                config_overrides=factory_overrides,
+                device=device,
+                seed=seed,
+            )
             logger.info("Created new agent")
     except Exception as exc:
         logger.error("Failed to create/load agent: %s", exc)

@@ -2629,102 +2629,17 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertEqual(overrides["rssm_shortcut_consistency"]["enabled"], True)
         self.assertEqual(tuple(overrides["rssm_shortcut_consistency"]["horizons"]), (2, 4))
         self.assertAlmostEqual(float(overrides["rssm_shortcut_consistency"]["loss_scale"]), 0.25, places=6)
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_policy_open_loop_consistency_weight"]),
-            0.15,
-            places=6,
+        self.assertNotIn("rl", overrides)
+        self.assertNotIn("imag_continue_prob_cap", overrides)
+        self.assertNotIn(
+            "adaptive_imag_policy_open_loop_consistency_weight",
+            overrides,
         )
-        self.assertEqual(
-            int(overrides["adaptive_imag_policy_open_loop_consistency_horizon"]),
-            3,
+        self.assertNotIn(
+            "adaptive_imag_actor_use_target_value_ruler_enabled",
+            overrides,
         )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_policy_open_loop_consistency_delta"]),
-            0.5,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_policy_open_loop_consistency_high_value_boost"]),
-            1.0,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_policy_open_loop_consistency_high_value_quantile"]),
-            0.75,
-            places=6,
-        )
-        self.assertTrue(bool(overrides["adaptive_imag_actor_use_target_value_ruler_enabled"]))
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_actor_use_target_value_ruler_blend"]),
-            1.0,
-            places=6,
-        )
-        self.assertTrue(
-            bool(overrides["adaptive_imag_actor_use_target_value_ruler_soft_gate_enabled"])
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_actor_use_target_value_ruler_gap_margin"]),
-            1.0,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(
-                overrides[
-                    "adaptive_imag_actor_use_target_value_ruler_critic_distill_weight"
-                ]
-            ),
-            0.15,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_idle_corridor_advantage_blend_max"]),
-            0.5,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_idle_corridor_negative_adv_threshold"]),
-            1.0,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_idle_corridor_negative_adv_tau"]),
-            2.0,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_idle_corridor_quantile"]),
-            0.75,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_idle_corridor_adv_term_clamp_min"]),
-            0.25,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_idle_corridor_clean_target_blend_max"]),
-            0.8,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(
-                overrides[
-                    "adaptive_imag_idle_corridor_clean_target_inflation_floor_max"
-                ]
-            ),
-            0.2,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_idle_corridor_inflation_threshold"]),
-            5.0,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_idle_corridor_inflation_tau"]),
-            3.0,
-            places=6,
-        )
+        self.assertNotIn("adaptive_imag_idle_corridor_advantage_blend_max", overrides)
 
     def test_explicit_cartpole_consistency_overrides_win_over_defaults(self):
         agent = _DummyAgent()
@@ -2807,52 +2722,13 @@ class TestRunTrainContracts(unittest.TestCase):
         overrides = create_calls[0]
         self.assertEqual(overrides["rssm_msc"]["enabled"], False)
         self.assertEqual(overrides["rssm_shortcut_consistency"]["enabled"], False)
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_policy_open_loop_consistency_weight"]),
-            0.05,
-            places=6,
+        self.assertNotIn(
+            "adaptive_imag_policy_open_loop_consistency_weight",
+            overrides,
         )
-        self.assertEqual(
-            int(overrides["adaptive_imag_policy_open_loop_consistency_horizon"]),
-            5,
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_policy_open_loop_consistency_delta"]),
-            0.75,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_policy_open_loop_consistency_high_value_boost"]),
-            2.0,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_policy_open_loop_consistency_high_value_quantile"]),
-            0.6,
-            places=6,
-        )
-        self.assertFalse(bool(overrides["adaptive_imag_actor_use_target_value_ruler_enabled"]))
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_actor_use_target_value_ruler_blend"]),
-            0.4,
-            places=6,
-        )
-        self.assertFalse(
-            bool(overrides["adaptive_imag_actor_use_target_value_ruler_soft_gate_enabled"])
-        )
-        self.assertAlmostEqual(
-            float(overrides["adaptive_imag_actor_use_target_value_ruler_gap_margin"]),
-            2.0,
-            places=6,
-        )
-        self.assertAlmostEqual(
-            float(
-                overrides[
-                    "adaptive_imag_actor_use_target_value_ruler_critic_distill_weight"
-                ]
-            ),
-            0.0,
-            places=6,
+        self.assertNotIn(
+            "adaptive_imag_actor_use_target_value_ruler_enabled",
+            overrides,
         )
 
     def test_explicit_wm_pretrain_and_warmup_overrides_win_over_cartpole_cap(self):
@@ -3189,9 +3065,11 @@ class TestRunTrainContracts(unittest.TestCase):
         agent = _DummyAgent()
         train_env = _CountingEnv(done_after=2)
         eval_env = _CountingEnv(done_after=2)
+        create_calls = []
 
         def fake_create_agent(env, config_overrides=None, device=None, seed=None):
-            del env, config_overrides, device, seed
+            del env, device, seed
+            create_calls.append(dict(config_overrides or {}))
             return agent
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -3250,6 +3128,9 @@ class TestRunTrainContracts(unittest.TestCase):
         self.assertFalse(bool(cfg.rl.detach_critic_features_on_imagination))
         self.assertFalse(bool(cfg.rl.use_actor_drift_guard))
         self.assertAlmostEqual(float(cfg.rl.slow_value_reg_drift_gain), 0.5, places=6)
+        self.assertEqual(len(create_calls), 1)
+        self.assertNotIn("rl", create_calls[0])
+        self.assertNotIn("detach_critic_features_on_imagination", create_calls[0])
 
 
     def test_run_train_rejects_legacy_post_entry_highwater_commit_overrides(self):
