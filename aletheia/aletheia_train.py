@@ -21319,42 +21319,98 @@ class TrainingLoop:
         warmup_steps = int(getattr(self.config, "warmup_steps", 0))
         warmup_end = wm_pretrain_steps + warmup_steps
 
-        while self.global_step < num_steps:
-            # ── Phase 1: Collect data (only when due) ───────────────────
-            if data_collector is not None and self._should_collect():
-                collect_num_steps = int(self.collect_steps_per_cycle)
-                target_env_steps = int(getattr(self.config, "total_env_steps", 0) or 0)
-                if target_env_steps > 0:
-                    remaining_env_steps = target_env_steps - int(self.env_steps_collected)
-                    if remaining_env_steps <= 0:
+        def _collect_with_data_collector(*, fail_on_budget_exhausted: bool) -> bool:
+            if data_collector is None:
+                return False
+            collect_fn = getattr(data_collector, "collect", None)
+            if not callable(collect_fn):
+                if fail_on_budget_exhausted:
+                    raise RuntimeError(
+                        "Data collector is configured but does not expose a callable collect()"
+                    )
+                return False
+            collect_num_steps = int(self.collect_steps_per_cycle)
+            target_env_steps = int(getattr(self.config, "total_env_steps", 0) or 0)
+            if target_env_steps > 0:
+                remaining_env_steps = target_env_steps - int(self.env_steps_collected)
+                if remaining_env_steps <= 0:
+                    if fail_on_budget_exhausted:
                         raise RuntimeError(
                             "Target env-step budget exhausted before reaching target update budget"
                         )
-                    collect_num_steps = min(collect_num_steps, int(remaining_env_steps))
-                result = data_collector.collect(
-                    num_steps=collect_num_steps
+                    return False
+                collect_num_steps = min(collect_num_steps, int(remaining_env_steps))
+            result = collect_fn(num_steps=collect_num_steps)
+            if result is None:
+                raise RuntimeError(
+                    "Data collector returned None instead of raising on collection failure"
                 )
-                if result is None:
-                    raise RuntimeError(
-                        "Data collector returned None instead of raising on collection failure"
-                    )
-                self._add_to_buffer(result)
-                self._steps_since_collect = 0
-                self._sync_episode_counts(data_collector)
-            elif data_collector is None:
-                self._sync_episode_counts(None)
+            self._add_to_buffer(result)
+            self._steps_since_collect = 0
+            self._sync_episode_counts(data_collector)
+            return True
 
-            # ── Phase 2: Build real/imag batches ───────────────────────
-            real_batch = self._build_real_batch()
+        def _build_batches_and_selection():
+            real_batch_local = self._build_real_batch()
             try:
-                imag_batch = self._build_imagined_batch(reference_real_batch=real_batch)
+                imag_batch_local = self._build_imagined_batch(
+                    reference_real_batch=real_batch_local
+                )
             except TypeError as exc:
                 if "reference_real_batch" not in str(exc):
                     raise
-                imag_batch = self._build_imagined_batch()
-            wm_real_batch = self._build_wm_batch()
-            if wm_real_batch is None:
-                wm_real_batch = real_batch
+                imag_batch_local = self._build_imagined_batch()
+            wm_real_batch_local = self._build_wm_batch()
+            if wm_real_batch_local is None:
+                wm_real_batch_local = real_batch_local
+            rl_batch_local, source_tag_local, imag_ratio_local = self._select_rl_batch(
+                real_batch=real_batch_local,
+                imag_batch=imag_batch_local,
+            )
+            return (
+                real_batch_local,
+                imag_batch_local,
+                wm_real_batch_local,
+                rl_batch_local,
+                source_tag_local,
+                imag_ratio_local,
+            )
+
+        while self.global_step < num_steps:
+            # ── Phase 1: Collect data (only when due) ───────────────────
+            if data_collector is not None and self._should_collect():
+                _collect_with_data_collector(fail_on_budget_exhausted=True)
+            elif data_collector is None:
+                self._sync_episode_counts(None)
+
+            # ── Phase 2: Determine phase and build real/imag batches ───
+            skip_rl = False
+            if self.global_step < wm_pretrain_steps:
+                phase = "wm_pretrain"
+                skip_rl = True
+            elif self.global_step < warmup_end:
+                phase = "warmup"
+                if imagination_only:
+                    skip_rl = True
+            else:
+                phase = "main"
+
+            while True:
+                (
+                    real_batch,
+                    imag_batch,
+                    wm_real_batch,
+                    rl_batch,
+                    source_tag,
+                    imag_ratio,
+                ) = _build_batches_and_selection()
+                needs_imag_seed = imagination_only and imag_batch is None
+                needs_wm_batch = skip_rl and wm_real_batch is None
+                needs_rl_batch = (not skip_rl) and rl_batch is None
+                if not (needs_imag_seed or needs_wm_batch or needs_rl_batch):
+                    break
+                if not _collect_with_data_collector(fail_on_budget_exhausted=False):
+                    break
 
             if imagination_only and imag_batch is None:
                 if self.imagination_engine is None:
@@ -21370,11 +21426,7 @@ class TrainingLoop:
                     "configured data collector did not provide a usable seed batch"
                 )
 
-            rl_batch, source_tag, imag_ratio = self._select_rl_batch(
-                real_batch=real_batch,
-                imag_batch=imag_batch,
-            )
-            if rl_batch is None:
+            if not skip_rl and rl_batch is None:
                 if data_collector is None:
                     raise RuntimeError(
                         "No available batch (real/imag) and no data collector is configured"
@@ -21383,18 +21435,6 @@ class TrainingLoop:
                     "No available batch (real/imag) despite a configured data collector; "
                     "training step would otherwise stall without progress"
                 )
-
-            # ── Phase policy: wm_pretrain -> warmup -> main ─────────────
-            skip_rl = False
-            if self.global_step < wm_pretrain_steps:
-                phase = "wm_pretrain"
-                skip_rl = True
-            elif self.global_step < warmup_end:
-                phase = "warmup"
-                if imagination_only:
-                    skip_rl = True
-            else:
-                phase = "main"
 
             rl_batch_for_step = rl_batch
             source_for_step = source_tag
