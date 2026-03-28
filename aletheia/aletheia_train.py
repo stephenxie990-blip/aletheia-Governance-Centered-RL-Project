@@ -7977,6 +7977,54 @@ class RolloutCollector:
 
 # ── Training State ──────────────────────────────────────────────────────────
 
+def _infer_resume_steps_since_collect(
+    *,
+    global_step: int,
+    train_steps_per_cycle: int,
+) -> int:
+    cycle = max(1, int(train_steps_per_cycle))
+    step = max(0, int(global_step))
+    if step <= 0:
+        return cycle
+    remainder = step % cycle
+    return cycle if remainder == 0 else remainder
+
+
+def _resolve_resume_steps_since_collect(
+    state: Any,
+    *,
+    global_step: int,
+    train_steps_per_cycle: int,
+) -> int:
+    cycle = max(1, int(train_steps_per_cycle))
+    raw_value = getattr(state, "steps_since_collect", -1)
+    if raw_value is None:
+        raw_value = -1
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "Resume checkpoint contains non-integer steps_since_collect metadata"
+        ) from exc
+    if value < 0:
+        inferred = _infer_resume_steps_since_collect(
+            global_step=global_step,
+            train_steps_per_cycle=cycle,
+        )
+        logger.warning(
+            "Resume checkpoint missing collect-phase metadata; inferred "
+            "steps_since_collect=%d from global_step=%d and train_steps_per_cycle=%d",
+            inferred,
+            int(global_step),
+            cycle,
+        )
+        return int(inferred)
+    if value > cycle:
+        raise ValueError(
+            "Resume checkpoint steps_since_collect exceeds train_steps_per_cycle"
+        )
+    return int(value)
+
 class TrainingState:
     """Track training progress, metrics history, and best-model info.
 
@@ -7993,6 +8041,7 @@ class TrainingState:
         self.global_step = 0
         self.episode_count = 0
         self.total_samples = 0
+        self.steps_since_collect = -1
 
         self.start_time = time.time()
         self.train_metrics_history: List[TrainingMetrics] = []
@@ -8063,6 +8112,7 @@ class TrainingState:
         self.global_step = int(getattr(loop, "global_step", 0))
         self.episode_count = int(getattr(loop, "episode_count", 0))
         self.total_samples = int(getattr(loop, "env_steps_collected", 0))
+        self.steps_since_collect = int(getattr(loop, "_steps_since_collect", -1))
         self.episode_return_ema = float(getattr(loop, "_episode_return_ema", 0.0))
         self.episode_return_initialized = bool(
             getattr(loop, "_episode_return_initialized", False)
@@ -8089,6 +8139,7 @@ class TrainingState:
             "global_step": self.global_step,
             "episode_count": self.episode_count,
             "total_samples": self.total_samples,
+            "steps_since_collect": self.steps_since_collect,
             "start_time": self.start_time,
             "best_eval_return": self.best_eval_return,
             "best_step": self.best_step,
@@ -8128,6 +8179,7 @@ class TrainingState:
         self.global_step = state.get("global_step", 0)
         self.episode_count = state.get("episode_count", 0)
         self.total_samples = state.get("total_samples", 0)
+        self.steps_since_collect = int(state.get("steps_since_collect", -1))
         self.start_time = state.get("start_time", time.time())
         self.best_eval_return = state.get("best_eval_return", -float("inf"))
         self.best_step = state.get("best_step", 0)
@@ -20773,6 +20825,7 @@ class TrainingLoop:
                 or getattr(self.config, "total_env_steps", 100_000)
             )
 
+        resumed_from_checkpoint = False
         if resume_from is not None and os.path.exists(resume_from):
             ts = TrainingStateManager.load(
                 resume_from,
@@ -20802,6 +20855,12 @@ class TrainingLoop:
                 ),
                 strict=True,
             )
+            self._steps_since_collect = _resolve_resume_steps_since_collect(
+                ts,
+                global_step=self.global_step,
+                train_steps_per_cycle=self.train_steps_per_cycle,
+            )
+            resumed_from_checkpoint = True
             logger.info(f"Resumed from step {self.global_step}")
 
         logger.info(
@@ -20811,7 +20870,8 @@ class TrainingLoop:
         )
 
         # Force initial collection
-        self._steps_since_collect = self.train_steps_per_cycle
+        if not resumed_from_checkpoint:
+            self._steps_since_collect = self.train_steps_per_cycle
         imagination_only = bool(getattr(self.config, "imagination_only", False))
         wm_pretrain_steps = int(getattr(self.config, "wm_pretrain_steps", 0))
         warmup_steps = int(getattr(self.config, "warmup_steps", 0))
