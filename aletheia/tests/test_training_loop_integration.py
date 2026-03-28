@@ -14479,7 +14479,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             ):
                 resumed_loop.run(num_steps=6, data_collector=None, resume_from=ckpt_path)
 
-    def test_resume_reports_compensation_anchor_degradation_explicitly(self):
+    def _make_compensation_restore_degradation_fixture(self):
         device = torch.device("cpu")
         config = TrainingConfig(
             config_mode="strict",
@@ -14574,6 +14574,49 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         restored_loop._external_eval_best_mean = 234.5
         restored_loop._external_eval_last_mean = 234.5
         restored_loop._external_eval_last_step = 5
+        return exported, restored_loop
+
+    def test_compensation_restore_defaults_to_strict_fail_fast_on_anchor_degradation(self):
+        exported, restored_loop = self._make_compensation_restore_degradation_fixture()
+
+        warnings = []
+
+        def _capture_warning(msg, *args, **kwargs):
+            del kwargs
+            warnings.append(msg % args if args else msg)
+
+        with mock.patch(
+            "aletheia.training.compensation_kernel.logger.warning",
+            side_effect=_capture_warning,
+        ):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "Adaptive compensation restore degraded",
+            ):
+                restored_loop._restore_adaptive_compensation_state(
+                    exported,
+                    fallback_best_step=5,
+                    fallback_best_eval=234.5,
+                )
+
+        report = restored_loop._adaptive_compensation_restore_report
+        self.assertEqual(report["status"], "degraded")
+        self.assertEqual(report["post_solved_anchor"]["status"], "fallback_recovered")
+        self.assertEqual(report["behavior_policy_anchor"]["status"], "fallback_recovered")
+        self.assertEqual(
+            int(report["real_stability_registry"]["skipped_entries"]),
+            1,
+        )
+        self.assertEqual(
+            int(report["real_stability_registry"]["restored_entries"]),
+            1,
+        )
+        self.assertTrue(any("post_solved_anchor" in item for item in warnings))
+        self.assertTrue(any("behavior_policy_anchor" in item for item in warnings))
+        self.assertTrue(any("real_stability_registry" in item for item in warnings))
+
+    def test_compensation_restore_can_explicitly_allow_degraded_diagnostics(self):
+        exported, restored_loop = self._make_compensation_restore_degradation_fixture()
 
         warnings = []
 
@@ -14589,6 +14632,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
                 exported,
                 fallback_best_step=5,
                 fallback_best_eval=234.5,
+                strict=False,
             )
 
         report = restored_loop._adaptive_compensation_restore_report

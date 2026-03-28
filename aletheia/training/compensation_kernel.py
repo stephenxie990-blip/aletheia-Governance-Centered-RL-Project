@@ -890,7 +890,7 @@ def restore_adaptive_compensation_state(
     fallback_best_step: int = -1,
     fallback_best_eval: float = -float("inf"),
     checkpoint_path: Optional[str] = None,
-    strict: bool = False,
+    strict: bool = True,
 ) -> None:
     if not state:
         runtime._adaptive_compensation_restore_report = {

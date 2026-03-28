@@ -9783,7 +9783,7 @@ class TrainingLoop:
         *,
         fallback_best_step: int = -1,
         fallback_best_eval: float = -float("inf"),
-        strict: bool = False,
+        strict: bool = True,
     ) -> None:
         _compensation_restore_adaptive_compensation_state(
             self,
