@@ -11,7 +11,7 @@ from ._checkpoint_schema_primitives import (
 )
 
 logger = logging.getLogger("aletheia.training_checkpoint_schema")
-_VALID_OPTIMIZER_RESTORE_MODES = {"auto", "strict", "compatible", "skip"}
+_VALID_OPTIMIZER_RESTORE_MODES = {"auto", "strict", "skip"}
 _VALID_MODEL_RESTORE_MODES = {"strict"}
 
 
@@ -69,11 +69,11 @@ def _resolve_auto_optimizer_restore_mode(
         current_effective_training_config
     )
     if checkpoint_effective_config is None:
-        return "compatible", "checkpoint lacks effective training config metadata"
+        return "skip", "checkpoint lacks effective training config metadata"
     if current_effective_config is None:
-        return "compatible", "current effective training config is unavailable"
+        return "skip", "current effective training config is unavailable"
     if checkpoint_effective_config != current_effective_config:
-        return "compatible", "effective training config drift detected"
+        return "skip", "effective training config drift detected"
     return "strict", None
 
 

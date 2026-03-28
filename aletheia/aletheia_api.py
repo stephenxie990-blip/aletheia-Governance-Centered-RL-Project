@@ -4455,7 +4455,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--resume-optimizer-restore-mode",
         type=str,
         default="auto",
-        choices=["auto", "strict", "compatible", "skip"],
+        choices=["auto", "strict", "skip"],
         help="Optimizer restore mode for trainer-state resume",
     )
     parser.add_argument(

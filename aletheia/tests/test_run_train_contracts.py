@@ -5254,15 +5254,14 @@ class TestRunTrainContracts(unittest.TestCase):
                 current_effective_training_config={"total_steps": 24},
             )
 
-        opt_bundle.load_state_dict.assert_called_once_with(
-            {"optimizer": 2},
-            restore_mode="compatible",
-        )
+        opt_bundle.load_state_dict.assert_not_called()
         buffer.load_state_dict.assert_called_once_with({"buffer": 3})
         warning_text = " ".join(
             " ".join(str(arg) for arg in call.args) for call in warning_mock.call_args_list
         )
         self.assertIn("effective training config drift detected", warning_text)
+        self.assertIn("optimizer %s mode", warning_text)
+        self.assertIn("skip", warning_text)
 
     def test_restore_training_checkpoint_payload_can_skip_optimizer_and_buffer_layers(self):
         config = TrainingConfig()
@@ -5290,7 +5289,7 @@ class TestRunTrainContracts(unittest.TestCase):
         opt_bundle.load_state_dict.assert_not_called()
         buffer.load_state_dict.assert_not_called()
 
-    def test_optimizer_bundle_compatible_restore_skips_incompatible_optimizer_groups(self):
+    def test_optimizer_bundle_rejects_compatible_restore_mode(self):
         source_param = nn.Parameter(torch.tensor([1.0]))
         target_param_a = nn.Parameter(torch.tensor([1.0]))
         target_param_b = nn.Parameter(torch.tensor([2.0]))
@@ -5304,15 +5303,31 @@ class TestRunTrainContracts(unittest.TestCase):
         with self.assertRaises(ValueError):
             target.load_state_dict(source.state_dict(), restore_mode="strict")
 
-        report = target.load_state_dict(
-            source.state_dict(),
-            restore_mode="compatible",
-        )
+        with self.assertRaisesRegex(
+            ValueError,
+            "restore_mode must be one of",
+        ):
+            target.load_state_dict(
+                source.state_dict(),
+                restore_mode="compatible",
+            )
 
-        self.assertEqual(report["restored"], [])
-        self.assertEqual(report["skipped"], ["rl"])
-        self.assertEqual(len(report["issues"]), 1)
-        self.assertEqual(report["issues"][0]["optimizer"], "rl")
+    def test_training_checkpoint_restore_policy_rejects_compatible_optimizer_restore_mode(self):
+        with self.assertRaisesRegex(ValueError, "optimizer_restore_mode must be one of"):
+            TrainingCheckpointRestorePolicy(
+                optimizer_restore_mode="compatible",
+            ).normalized()
+
+    def test_main_rejects_compatible_resume_optimizer_restore_mode(self):
+        with self.assertRaises(SystemExit) as exc:
+            api.main([
+                "--env",
+                "CartPole-v1",
+                "--resume-optimizer-restore-mode",
+                "compatible",
+            ])
+
+        self.assertEqual(int(exc.exception.code), 2)
 
     def test_training_state_manager_load_uses_unified_training_checkpoint_reader(self):
         config = TrainingConfig()

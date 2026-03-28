@@ -3279,9 +3279,9 @@ class OptimizerBundle:
     ) -> Dict[str, Any]:
         """Restore optimizer states from a checkpoint."""
         restore_mode = str(restore_mode or "strict").strip().lower()
-        if restore_mode not in {"strict", "compatible", "skip"}:
+        if restore_mode not in {"strict", "skip"}:
             raise ValueError(
-                "restore_mode must be one of ['strict', 'compatible', 'skip']."
+                "restore_mode must be one of ['strict', 'skip']."
             )
 
         report: Dict[str, Any] = {
@@ -3301,20 +3301,7 @@ class OptimizerBundle:
         ):
             if key not in sd or optimizer is None:
                 continue
-            try:
-                optimizer.load_state_dict(sd[key])
-            except (RuntimeError, ValueError) as exc:
-                if restore_mode != "compatible":
-                    raise
-                report["skipped"].append(key)
-                report["issues"].append(
-                    {
-                        "optimizer": key,
-                        "message": str(exc),
-                        "exception_type": type(exc).__name__,
-                    }
-                )
-                continue
+            optimizer.load_state_dict(sd[key])
             report["restored"].append(key)
         return report
 
