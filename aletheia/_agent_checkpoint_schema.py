@@ -23,7 +23,8 @@ _OPTIONAL_COMPONENT_FIELDS: Tuple[str, ...] = (
     "will",
 )
 logger = logging.getLogger("aletheia.agent_checkpoint_schema")
-_VALID_COMPONENT_RESTORE_MODES = {"strict", "compatible", "skip"}
+_VALID_REQUIRED_COMPONENT_RESTORE_MODES = {"strict"}
+_VALID_OPTIONAL_COMPONENT_RESTORE_MODES = {"strict", "compatible", "skip"}
 
 
 @dataclass(frozen=True)
@@ -36,18 +37,23 @@ class AgentCheckpointRestorePolicy:
     def normalized(self) -> "AgentCheckpointRestorePolicy":
         required_mode = str(self.required_component_restore_mode or "strict").strip().lower()
         optional_mode = str(self.optional_component_restore_mode or "strict").strip().lower()
-        if required_mode not in _VALID_COMPONENT_RESTORE_MODES:
+        if not bool(self.restore_required_components):
+            raise ValueError(
+                "restore_required_components=False is no longer supported; "
+                "required agent components must restore strictly."
+            )
+        if required_mode not in _VALID_REQUIRED_COMPONENT_RESTORE_MODES:
             raise ValueError(
                 "required_component_restore_mode must be one of "
-                f"{sorted(_VALID_COMPONENT_RESTORE_MODES)}."
+                f"{sorted(_VALID_REQUIRED_COMPONENT_RESTORE_MODES)}."
             )
-        if optional_mode not in _VALID_COMPONENT_RESTORE_MODES:
+        if optional_mode not in _VALID_OPTIONAL_COMPONENT_RESTORE_MODES:
             raise ValueError(
                 "optional_component_restore_mode must be one of "
-                f"{sorted(_VALID_COMPONENT_RESTORE_MODES)}."
+                f"{sorted(_VALID_OPTIONAL_COMPONENT_RESTORE_MODES)}."
             )
         return AgentCheckpointRestorePolicy(
-            restore_required_components=bool(self.restore_required_components),
+            restore_required_components=True,
             restore_optional_components=bool(self.restore_optional_components),
             required_component_restore_mode=required_mode,
             optional_component_restore_mode=optional_mode,

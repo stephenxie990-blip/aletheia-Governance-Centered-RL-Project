@@ -5573,7 +5573,7 @@ class TestRunTrainContracts(unittest.TestCase):
         handle.critic.load_state_dict.assert_not_called()
         warning_mock.assert_not_called()
 
-    def test_restore_agent_checkpoint_modules_explicit_compatible_policy_can_skip_incompatible_required_component(self):
+    def test_restore_agent_checkpoint_modules_rejects_compatible_required_component_policy(self):
         handle = api.AgentHandle.__new__(api.AgentHandle)
         handle.world_model = mock.Mock()
         handle.actor = mock.Mock()
@@ -5582,8 +5582,8 @@ class TestRunTrainContracts(unittest.TestCase):
         handle.will = None
         handle.world_model.load_state_dict.side_effect = RuntimeError("shape mismatch")
 
-        with mock.patch("aletheia._agent_checkpoint_schema.logger.warning") as warning_mock:
-            step_count = restore_agent_checkpoint_modules(
+        with self.assertRaisesRegex(ValueError, "required_component_restore_mode must be one of"):
+            restore_agent_checkpoint_modules(
                 handle,
                 {
                     "world_model": {"wm": 1},
@@ -5599,16 +5599,40 @@ class TestRunTrainContracts(unittest.TestCase):
                 checkpoint_path="agent.pt",
             )
 
-        handle.world_model.load_state_dict.assert_called_once_with({"wm": 1}, strict=False)
-        handle.actor.load_state_dict.assert_called_once_with({"actor": 2}, strict=False)
-        handle.critic.load_state_dict.assert_called_once_with({"critic": 3}, strict=False)
-        warning_text = " ".join(
-            " ".join(str(arg) for arg in call.args) for call in warning_mock.call_args_list
-        )
-        self.assertIn("world_model", warning_text)
-        self.assertIn("shape mismatch", warning_text)
-        self.assertIn("compatible", warning_text)
-        self.assertEqual(step_count, 7)
+        handle.world_model.load_state_dict.assert_not_called()
+        handle.actor.load_state_dict.assert_not_called()
+        handle.critic.load_state_dict.assert_not_called()
+
+    def test_restore_agent_checkpoint_modules_rejects_skipping_required_components(self):
+        handle = api.AgentHandle.__new__(api.AgentHandle)
+        handle.world_model = mock.Mock()
+        handle.actor = mock.Mock()
+        handle.critic = mock.Mock()
+        handle.router = None
+        handle.will = None
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "restore_required_components=False is no longer supported",
+        ):
+            restore_agent_checkpoint_modules(
+                handle,
+                {
+                    "world_model": {"wm": 1},
+                    "actor": {"actor": 2},
+                    "critic": {"critic": 3},
+                    "step_count": 7,
+                },
+                strict=True,
+                restore_policy=AgentCheckpointRestorePolicy(
+                    restore_required_components=False,
+                ),
+                checkpoint_path="agent.pt",
+            )
+
+        handle.world_model.load_state_dict.assert_not_called()
+        handle.actor.load_state_dict.assert_not_called()
+        handle.critic.load_state_dict.assert_not_called()
 
     def test_agent_load_uses_unified_checkpoint_reader(self):
         handle = api.AgentHandle.__new__(api.AgentHandle)
