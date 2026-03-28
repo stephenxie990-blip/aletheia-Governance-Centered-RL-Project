@@ -5,7 +5,6 @@ import tempfile
 import unittest
 import copy
 import io
-import warnings
 from dataclasses import asdict
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -1486,17 +1485,15 @@ class TestRunTrainContracts(unittest.TestCase):
         finally:
             set_activation_validation_mode("strict")
 
-    def test_unknown_activation_warn_mode_requires_explicit_opt_in(self):
-        set_activation_validation_mode("warn")
-        try:
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
-                activation_cls = get_activation_class("definitely_not_a_real_activation")
-            self.assertIs(activation_cls, nn.SiLU)
-            self.assertEqual(len(caught), 1)
-            self.assertIn("fallback to SiLU", str(caught[0].message))
-        finally:
-            set_activation_validation_mode("strict")
+    def test_unknown_activation_warn_and_off_modes_still_fail_fast(self):
+        for validation_mode in ("warn", "off"):
+            with self.subTest(validation_mode=validation_mode):
+                set_activation_validation_mode(validation_mode)
+                try:
+                    with self.assertRaisesRegex(ValueError, "Unknown activation"):
+                        get_activation_class("definitely_not_a_real_activation")
+                finally:
+                    set_activation_validation_mode("strict")
 
     def test_normalize_training_config_compat_rejects_legacy_field_aliases_without_opt_in(self):
         with self.assertRaisesRegex(

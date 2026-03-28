@@ -840,14 +840,13 @@ class RSSMConfig:
                 setattr(obj_a, attr_a, int(vb))
             elif vb <= 0 and va > 0:
                 setattr(obj_b, attr_b, int(va))
-        # 强制一致
         if d.num_distributions != self.z_categories or d.num_classes != self.z_classes:
-            warnings.warn(
-                "RSSMConfig: distribution dims mismatch, using distribution values",
-                UserWarning,
+            raise ValueError(
+                "RSSMConfig: distribution dims mismatch: "
+                f"z_categories/z_classes=({self.z_categories}, {self.z_classes}) "
+                f"!= distribution.num_distributions/num_classes="
+                f"({d.num_distributions}, {d.num_classes})"
             )
-            self.z_categories = int(d.num_distributions)
-            self.z_classes = int(d.num_classes)
 
     @property
     def z_dim(self) -> int:

@@ -208,11 +208,7 @@ def get_activation_class(activation: Any) -> type:
         return cls
     if hasattr(nn, activation):
         return getattr(nn, activation)
-    if _ACTIVATION_VALIDATION_MODE == "strict":
-        raise ValueError(f"Unknown activation: {activation}")
-    if _ACTIVATION_VALIDATION_MODE == "warn":
-        warnings.warn(f"Unknown activation '{activation}', fallback to SiLU.", UserWarning)
-    return nn.SiLU
+    raise ValueError(f"Unknown activation: {activation}")
 
 
 def get_activation(activation: Any) -> nn.Module:

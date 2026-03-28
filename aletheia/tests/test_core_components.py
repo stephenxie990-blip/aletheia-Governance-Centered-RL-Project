@@ -1028,5 +1028,52 @@ class TestSymlogSymexpConsistency(unittest.TestCase):
         self.assertTrue(torch.equal(ac_symexp(x), symexp(x)))
 
 
+class TestRSSMConfigContracts(unittest.TestCase):
+    def test_categorical_rssm_rejects_distribution_dim_mismatch(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "RSSMConfig: distribution dims mismatch",
+        ):
+            RSSMConfig(
+                vitals_dim=4,
+                deter_dim=8,
+                hidden_dim=16,
+                action_embed_dim=8,
+                obs_embed_dim=8,
+                z_embed_dim=8,
+                z_type="categorical",
+                z_categories=3,
+                z_classes=5,
+                distribution=DistributionConfig(
+                    num_distributions=2,
+                    num_classes=4,
+                    use_unimix=False,
+                ),
+            )
+
+    def test_categorical_rssm_still_backfills_missing_distribution_dims(self):
+        cfg = RSSMConfig(
+            vitals_dim=4,
+            deter_dim=8,
+            hidden_dim=16,
+            action_embed_dim=8,
+            obs_embed_dim=8,
+            z_embed_dim=8,
+            z_type="categorical",
+            z_categories=0,
+            z_classes=0,
+            distribution=DistributionConfig(
+                num_distributions=2,
+                num_classes=4,
+                use_unimix=False,
+            ),
+        )
+
+        self.assertEqual(int(cfg.z_categories), 2)
+        self.assertEqual(int(cfg.z_classes), 4)
+        self.assertEqual(int(cfg.distribution.num_distributions), 2)
+        self.assertEqual(int(cfg.distribution.num_classes), 4)
+
+
 if __name__ == "__main__":
     unittest.main()
