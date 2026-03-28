@@ -21050,11 +21050,10 @@ class TrainingLoop:
                     raise RuntimeError(
                         "Imagination-only enabled but no seed data is available and no data collector is configured"
                     )
-                else:
-                    logger.warning("Imagination-only enabled but no seed data available")
-                self._steps_since_collect = self.train_steps_per_cycle
-                time.sleep(0.1)
-                continue
+                raise RuntimeError(
+                    "Imagination-only enabled but no seed data available; "
+                    "configured data collector did not provide a usable seed batch"
+                )
 
             rl_batch, source_tag, imag_ratio = self._select_rl_batch(
                 real_batch=real_batch,
@@ -21065,10 +21064,10 @@ class TrainingLoop:
                     raise RuntimeError(
                         "No available batch (real/imag) and no data collector is configured"
                     )
-                logger.warning("No available batch (real/imag), skipping step")
-                self._steps_since_collect = self.train_steps_per_cycle
-                time.sleep(0.1)
-                continue
+                raise RuntimeError(
+                    "No available batch (real/imag) despite a configured data collector; "
+                    "training step would otherwise stall without progress"
+                )
 
             # ── Phase policy: wm_pretrain -> warmup -> main ─────────────
             skip_rl = False
@@ -21109,10 +21108,10 @@ class TrainingLoop:
                     raise RuntimeError(
                         "Skip-RL phase requires WM batch but no data collector is configured"
                     )
-                logger.warning("Skip-RL phase requires WM batch but none is available; collecting more data.")
-                self._steps_since_collect = self.train_steps_per_cycle
-                time.sleep(0.1)
-                continue
+                raise RuntimeError(
+                    "Skip-RL phase requires WM batch but none is available; "
+                    "configured data collector did not produce a usable WM batch"
+                )
             value_real_batch = None
             if source_for_step == "imag" and real_batch is not None:
                 value_real_batch = real_batch

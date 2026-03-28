@@ -1200,6 +1200,81 @@ class TestRunTrainContracts(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "No available batch \\(real/imag\\)"):
             train_mod.TrainingLoop.run(loop, num_steps=1, data_collector=None)
 
+    def test_training_loop_run_rejects_missing_imagination_seed_even_with_collector(self):
+        loop = SimpleNamespace()
+        loop.config = SimpleNamespace(
+            total_steps=1,
+            num_train_steps=1,
+            total_env_steps=1,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+            imagination_only=True,
+        )
+        loop.device = torch.device("cpu")
+        loop.global_step = 0
+        loop.episode_count = 0
+        loop.env_steps_collected = 0
+        loop._steps_since_collect = 0
+        loop.train_steps_per_cycle = 1
+        loop.collect_steps_per_cycle = 1
+        loop.model = object()
+        loop.imagination_engine = object()
+        loop.logger_fn = lambda metrics, step=0: None
+        loop._should_collect = lambda: False
+        loop._add_to_buffer = lambda result: None
+        loop._sync_episode_counts = lambda collector: None
+        loop._build_real_batch = lambda: None
+        loop._build_imagined_batch = lambda reference_real_batch=None: None
+        loop._build_wm_batch = lambda: None
+        loop._select_rl_batch = lambda real_batch, imag_batch: (None, "none", 1.0)
+        loop.should_log = lambda: False
+        loop.should_eval = lambda: False
+        loop.should_save = lambda: False
+        loop.train_step = lambda **kwargs: {"loss_actor": 0.0}
+
+        collector = SimpleNamespace(episode_returns=[])
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "Imagination-only enabled but no seed data available",
+        ):
+            train_mod.TrainingLoop.run(loop, num_steps=1, data_collector=collector)
+
+    def test_training_loop_run_rejects_missing_batches_even_with_collector(self):
+        loop = SimpleNamespace()
+        loop.config = SimpleNamespace(
+            total_steps=1,
+            num_train_steps=1,
+            total_env_steps=1,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+            imagination_only=False,
+        )
+        loop.device = torch.device("cpu")
+        loop.global_step = 0
+        loop.episode_count = 0
+        loop.env_steps_collected = 0
+        loop._steps_since_collect = 0
+        loop.train_steps_per_cycle = 1
+        loop.collect_steps_per_cycle = 1
+        loop.model = object()
+        loop.imagination_engine = object()
+        loop.logger_fn = lambda metrics, step=0: None
+        loop._should_collect = lambda: False
+        loop._add_to_buffer = lambda result: None
+        loop._sync_episode_counts = lambda collector: None
+        loop._build_real_batch = lambda: None
+        loop._build_imagined_batch = lambda reference_real_batch=None: None
+        loop._build_wm_batch = lambda: None
+        loop._select_rl_batch = lambda real_batch, imag_batch: (None, "none", 0.0)
+        loop.should_log = lambda: False
+        loop.should_eval = lambda: False
+        loop.should_save = lambda: False
+        loop.train_step = lambda **kwargs: {"loss_actor": 0.0}
+
+        collector = SimpleNamespace(episode_returns=[])
+        with self.assertRaisesRegex(RuntimeError, "No available batch \\(real/imag\\)"):
+            train_mod.TrainingLoop.run(loop, num_steps=1, data_collector=collector)
+
     def test_training_loop_run_rejects_missing_wm_batch_without_collector(self):
         loop = SimpleNamespace()
         loop.config = SimpleNamespace(
@@ -1234,6 +1309,42 @@ class TestRunTrainContracts(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "Skip-RL phase requires WM batch"):
             train_mod.TrainingLoop.run(loop, num_steps=1, data_collector=None)
+
+    def test_training_loop_run_rejects_missing_wm_batch_even_with_collector(self):
+        loop = SimpleNamespace()
+        loop.config = SimpleNamespace(
+            total_steps=1,
+            num_train_steps=1,
+            total_env_steps=1,
+            wm_pretrain_steps=1,
+            warmup_steps=0,
+            imagination_only=False,
+        )
+        loop.device = torch.device("cpu")
+        loop.global_step = 0
+        loop.episode_count = 0
+        loop.env_steps_collected = 0
+        loop._steps_since_collect = 0
+        loop.train_steps_per_cycle = 1
+        loop.collect_steps_per_cycle = 1
+        loop.model = object()
+        loop.imagination_engine = object()
+        loop.logger_fn = lambda metrics, step=0: None
+        loop._should_collect = lambda: False
+        loop._add_to_buffer = lambda result: None
+        loop._sync_episode_counts = lambda collector: None
+        loop._build_real_batch = lambda: None
+        loop._build_imagined_batch = lambda reference_real_batch=None: {"imag": True}
+        loop._build_wm_batch = lambda: None
+        loop._select_rl_batch = lambda real_batch, imag_batch: (imag_batch, "imag", 1.0)
+        loop.should_log = lambda: False
+        loop.should_eval = lambda: False
+        loop.should_save = lambda: False
+        loop.train_step = lambda **kwargs: {"loss_actor": 0.0}
+
+        collector = SimpleNamespace(episode_returns=[])
+        with self.assertRaisesRegex(RuntimeError, "Skip-RL phase requires WM batch"):
+            train_mod.TrainingLoop.run(loop, num_steps=1, data_collector=collector)
 
     def test_training_config_strict_allows_distinct_env_step_budget(self):
         cfg = TrainingConfig(
