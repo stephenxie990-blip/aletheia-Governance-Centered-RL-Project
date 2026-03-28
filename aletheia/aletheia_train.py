@@ -3116,6 +3116,9 @@ def _resolve_distribution_probs_and_log_probs(
 def _compute_distribution_kl_tensor(
     anchor_dist: Any,
     current_dist: Any,
+    *,
+    strict: bool = False,
+    context: str = "distribution KL",
 ) -> Optional[Tensor]:
     anchor_probs, anchor_log_probs = _resolve_distribution_probs_and_log_probs(
         anchor_dist
@@ -3134,8 +3137,14 @@ def _compute_distribution_kl_tensor(
             kl = kl_fn(current_dist)
             if isinstance(kl, Tensor):
                 return kl
-        except Exception:
+        except Exception as exc:
+            if strict:
+                raise RuntimeError(f"Failed to compute {context}: {exc}") from exc
             return None
+    if strict:
+        raise RuntimeError(
+            f"Failed to compute {context}: distribution does not expose KL inputs"
+        )
     return None
 
 
@@ -3146,6 +3155,9 @@ def _compute_policy_bank_min_kl_tensor(
     current_actor: Any,
     anchor_actors: Optional[List[Any]],
     feat_t: Optional[Tensor],
+    *,
+    strict: bool = False,
+    context: str = "policy bank KL",
 ) -> Tuple[Optional[Tensor], int]:
     if current_actor is None or not callable(current_actor):
         return None, 0
@@ -3162,14 +3174,30 @@ def _compute_policy_bank_min_kl_tensor(
         with torch.no_grad():
             current_dist = current_actor(feat_t)
             kl_candidates: List[Tensor] = []
-            for anchor_actor in valid_actors:
+            for idx, anchor_actor in enumerate(valid_actors):
                 anchor_dist = anchor_actor(feat_t)
-                kl_flat = _compute_distribution_kl_tensor(anchor_dist, current_dist)
+                kl_flat = _compute_distribution_kl_tensor(
+                    anchor_dist,
+                    current_dist,
+                    strict=strict,
+                    context=f"{context} anchor[{idx}]",
+                )
                 if isinstance(kl_flat, Tensor) and kl_flat.numel() == feat_t.shape[0]:
                     kl_candidates.append(kl_flat.detach())
-    except Exception:
+                elif strict:
+                    raise RuntimeError(
+                        f"Failed to compute {context}: anchor[{idx}] produced "
+                        f"KL with unexpected shape"
+                    )
+    except Exception as exc:
+        if strict:
+            raise RuntimeError(f"Failed to compute {context}: {exc}") from exc
         return None, 0
     if not kl_candidates:
+        if strict:
+            raise RuntimeError(
+                f"Failed to compute {context}: no valid anchor KL tensors were produced"
+            )
         return None, 0
     return torch.stack(kl_candidates, dim=-1).min(dim=-1).values, len(kl_candidates)
 
@@ -13942,6 +13970,7 @@ class TrainingLoop:
                         kl_flat = _compute_distribution_kl_tensor(
                             anchor_dist,
                             current_dist,
+                            context="behavior-policy eval anchor KL",
                         )
                     if isinstance(kl_flat, Tensor) and kl_flat.numel() == corridor_semantic_corridor_mask.numel():
                         kl_tensor = kl_flat.reshape_as(corridor_semantic_corridor_mask).detach()
@@ -13980,6 +14009,8 @@ class TrainingLoop:
                         [],
                     ),
                     feats_flat,
+                    strict=True,
+                    context="certified registry policy KL",
                 )
                 if (
                     isinstance(registry_kl_flat, Tensor)

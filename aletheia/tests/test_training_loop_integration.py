@@ -15860,6 +15860,166 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             places=6,
         )
 
+    def test_build_imagined_batch_keeps_eval_anchor_kl_best_effort(self):
+        device = torch.device("cpu")
+        model = _TinyImagModel().to(device)
+        with torch.no_grad():
+            model.actor.net.weight.zero_()
+            model.actor.net.bias.zero_()
+            model.critic.weight.zero_()
+            model.critic.bias.zero_()
+
+        buffer = ReplayBuffer(capacity=8)
+        buffer.start_episode(initial_vitals=np.full((4,), 1.0, dtype=np.float32))
+        buffer.add_step(
+            vitals=np.full((4,), 2.0, dtype=np.float32),
+            action=np.array([1.0, 0.0], dtype=np.float32),
+            reward=0.5,
+            done=False,
+            log_prob=0.0,
+        )
+        buffer.add_step(
+            vitals=np.full((4,), 3.0, dtype=np.float32),
+            action=np.array([0.0, 1.0], dtype=np.float32),
+            reward=0.5,
+            done=True,
+            terminated=True,
+            truncated=False,
+            log_prob=0.0,
+        )
+
+        config = TrainingConfig(
+            config_mode="strict",
+            validation_mode="off",
+            total_steps=1,
+            num_train_steps=1,
+            total_env_steps=2,
+            batch_size=1,
+            seq_len=4,
+            wm_seq_len=4,
+            wm_batch_size=1,
+            rl_batch_size=1,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+            imagination_only=True,
+            imagination_horizon=3,
+            imagination_batch_size=1,
+            imag_continue_prob_cap=1.0,
+            adaptive_imag_continue_cap=False,
+            adaptive_imag_idle_corridor_advantage_blend_max=0.1,
+            adaptive_imag_idle_corridor_quantile=0.0,
+            log_interval=1000,
+            eval_interval=1000,
+            save_interval=1000,
+        )
+        loop = TrainingLoop(model=model, buffer=buffer, config=config, device=device, env=None)
+        loop.imagination_engine = _ContractFeatureImaginationEngine(
+            device,
+            policy_features=[[[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0]]],
+            rewards=[[0.1, 0.2, 0.3]],
+            values=[[0.0, 0.0, 0.0, 0.0]],
+            continue_probs=[[1.0, 1.0, 1.0]],
+            entropies=[[0.2, 0.4, 0.6]],
+            log_probs=[[-0.2, -0.3, -0.4]],
+            actions=[[[1.0, 0.0], [0.0, 1.0], [1.0, 0.0]]],
+        )
+
+        anchor_actor = _TinyImagActor().to(device)
+        anchor_actor.eval()
+        for param in anchor_actor.parameters():
+            param.requires_grad_(False)
+        loop._behavior_policy_eval_anchor_actor = anchor_actor
+
+        with mock.patch(
+            "aletheia.aletheia_train._compute_distribution_kl_tensor",
+            side_effect=RuntimeError("eval anchor kl boom"),
+        ):
+            batch = loop._build_imagined_batch()
+
+        self.assertIsNotNone(batch)
+        self.assertAlmostEqual(float(batch["behavior_policy_eval_anchor_available"]), 0.0, places=6)
+        self.assertAlmostEqual(float(batch["behavior_policy_kl_to_eval_anchor_mean"]), 0.0, places=6)
+
+    def test_build_imagined_batch_rejects_certified_registry_kl_failures(self):
+        device = torch.device("cpu")
+        model = _TinyImagModel().to(device)
+        with torch.no_grad():
+            model.actor.net.weight.zero_()
+            model.actor.net.bias.zero_()
+            model.critic.weight.zero_()
+            model.critic.bias.zero_()
+
+        buffer = ReplayBuffer(capacity=8)
+        buffer.start_episode(initial_vitals=np.full((4,), 1.0, dtype=np.float32))
+        buffer.add_step(
+            vitals=np.full((4,), 2.0, dtype=np.float32),
+            action=np.array([1.0, 0.0], dtype=np.float32),
+            reward=0.5,
+            done=False,
+            log_prob=0.0,
+        )
+        buffer.add_step(
+            vitals=np.full((4,), 3.0, dtype=np.float32),
+            action=np.array([0.0, 1.0], dtype=np.float32),
+            reward=0.5,
+            done=True,
+            terminated=True,
+            truncated=False,
+            log_prob=0.0,
+        )
+
+        config = TrainingConfig(
+            config_mode="strict",
+            validation_mode="off",
+            total_steps=1,
+            num_train_steps=1,
+            total_env_steps=2,
+            batch_size=1,
+            seq_len=4,
+            wm_seq_len=4,
+            wm_batch_size=1,
+            rl_batch_size=1,
+            wm_pretrain_steps=0,
+            warmup_steps=0,
+            imagination_only=True,
+            imagination_horizon=3,
+            imagination_batch_size=1,
+            imag_continue_prob_cap=1.0,
+            adaptive_imag_continue_cap=False,
+            adaptive_imag_idle_corridor_advantage_blend_max=0.1,
+            adaptive_imag_idle_corridor_quantile=0.0,
+            log_interval=1000,
+            eval_interval=1000,
+            save_interval=1000,
+        )
+        loop = TrainingLoop(model=model, buffer=buffer, config=config, device=device, env=None)
+        loop.imagination_engine = _ContractFeatureImaginationEngine(
+            device,
+            policy_features=[[[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0]]],
+            rewards=[[0.1, 0.2, 0.3]],
+            values=[[0.0, 0.0, 0.0, 0.0]],
+            continue_probs=[[1.0, 1.0, 1.0]],
+            entropies=[[0.2, 0.4, 0.6]],
+            log_probs=[[-0.2, -0.3, -0.4]],
+            actions=[[[1.0, 0.0], [0.0, 1.0], [1.0, 0.0]]],
+        )
+
+        registry_actor = _TinyImagActor().to(device)
+        registry_actor.eval()
+        for param in registry_actor.parameters():
+            param.requires_grad_(False)
+        loop._real_stability_certified_anchor_registry_actors = [registry_actor]
+        loop._real_stability_certified_anchor_registry_steps = [100]
+        loop._real_stability_certified_anchor_registry_evals = [220.0]
+        loop._real_stability_certified_anchor_registry_telemetries = [{}]
+
+        with mock.patch(
+            "aletheia.aletheia_train._compute_distribution_kl_tensor",
+            side_effect=RuntimeError("registry kl boom"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "certified registry"):
+                loop._build_imagined_batch()
+
     def test_build_imagined_batch_can_use_pre_eval_certified_registry_support(self):
         device = torch.device("cpu")
         model = _TinyImagModel().to(device)
