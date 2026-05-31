@@ -2,6 +2,8 @@
 
 Aletheia is a governance-first reinforcement learning system.
 
+License: Apache-2.0
+
 Most RL projects are organized around algorithms. Aletheia is organized around **trust**.
 
 It is built on a simple premise:
@@ -296,3 +298,6 @@ Aletheia is a reinforcement learning system that treats trust as a first-class t
 
 It is for cases where the right question is not only "what should the policy do?" but also "why should we trust the signal that tells it to do that?"
 
+## License
+
+This repository is licensed under the [Apache License 2.0](LICENSE).
