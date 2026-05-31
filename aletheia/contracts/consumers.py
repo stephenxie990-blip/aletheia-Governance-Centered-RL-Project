@@ -104,11 +104,14 @@ class BootstrapTargetExecutionResult:
     prehold_target_cap_delta_abs: Tensor
 
 
+
+
 def _value_tensor_like(
     reference: Tensor,
     value: Optional[Union[float, Tensor]],
     default: float,
 ) -> Tensor:
+    """Like contract_tensor_like but WITHOUT [0,1] clamping — for unbounded value caps."""
     if isinstance(value, Tensor):
         if value.shape == reference.shape:
             return value.detach().to(device=reference.device, dtype=reference.dtype)
@@ -120,7 +123,6 @@ def _value_tensor_like(
         except (TypeError, ValueError):
             pass
     return torch.full_like(reference, float(default))
-
 
 
 # hold_state functions (HOLD_CHANNELS, make_empty_hold_state, etc.) are
@@ -528,16 +530,7 @@ def compute_bootstrap_final_external_value_quality_contract(
     anchor_valid_mask = contract_tensor_like(reference, bootstrap_anchor_valid_mask, 0.0).clamp(
         0.0, 1.0
     )
-    regime_quality_gate = (
-        contract_tensor_like(reference, critic_contract_bootstrap_regime_quality_gate, 1.0).clamp(
-            0.0, 1.0
-        )
-        if isinstance(critic_contract_bootstrap_regime_quality_gate, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_regime_quality_gate))),
-        )
-    )
+    regime_quality_gate = contract_tensor_like(reference, critic_contract_bootstrap_regime_quality_gate, 1.0).clamp(0.0, 1.0)
     raw_vs_clean_gap = (
         critic_contract_bootstrap_raw_vs_clean_gap.detach().to(
             device=reference.device, dtype=reference.dtype
@@ -555,20 +548,7 @@ def compute_bootstrap_final_external_value_quality_contract(
     task_mismatch = contract_tensor_like(reference, actor_contract_task_mismatch, 0.0).clamp(min=0.0)
     inflation_excess = contract_tensor_like(reference, actor_corridor_semantic_inflation_excess, 0.0).clamp(min=0.0)
     late_gate = contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
-    if isinstance(critic_contract_bootstrap_source_hold_window_activation, Tensor):
-        hold_window_activation = contract_tensor_like(
-            reference,
-            critic_contract_bootstrap_source_hold_window_activation,
-            0.0,
-        ).clamp(0.0, 1.0)
-    else:
-        hold_window_activation = torch.full_like(
-            reference,
-            min(
-                1.0,
-                max(0.0, float(critic_contract_bootstrap_source_hold_window_activation)),
-            ),
-        )
+    hold_window_activation = contract_tensor_like(reference, critic_contract_bootstrap_source_hold_window_activation, 0.0).clamp(0.0, 1.0)
     high_value_but_low_task_fraction = contract_tensor_like(reference, actor_high_value_but_low_task_fraction, 0.0).clamp(0.0, 1.0)
     task_geom_corridor_disagreement = contract_tensor_like(reference, actor_task_geom_corridor_disagreement, 0.0).clamp(0.0, 1.0)
     source_quality = torch.minimum(source_truth, source_alignment).clamp(0.0, 1.0)
