@@ -150,17 +150,17 @@ def _migrate_dir(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Migrate Step 2.1 run artifacts to cleaned telemetry semantics.")
+    parser = argparse.ArgumentParser(description="Rename telemetry keys in run artifacts.")
     parser.add_argument("run_dirs", nargs="+", help="Run output directories to migrate")
     parser.add_argument(
         "--rename-release-coupling-to-observed",
         action="store_true",
-        help="Rename release coupling metric to *_observed_mean for runs where it was observation-only.",
+        help="Rename the coupling metric to *_observed_mean.",
     )
     parser.add_argument(
         "--rename-release-coupling-to-historical",
         action="store_true",
-        help="Rename release coupling metric to *_historical_mean for runs with legacy historical semantics.",
+        help="Rename the coupling metric to *_historical_mean.",
     )
     args = parser.parse_args()
 

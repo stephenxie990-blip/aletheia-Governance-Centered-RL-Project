@@ -68,7 +68,7 @@ In Aletheia, a value signal is not just a tensor. It can carry:
 
 This makes it possible to ask concrete questions like:
 
-- Is the source internal or external?
+- Is the source primary or reference?
 - Is it task-certified or geometry-certified?
 - Is it stale?
 - Should it dominate the current training target?
@@ -132,7 +132,7 @@ Aletheia includes defensive behavior that is easy to miss if you only look at th
 - `validation_mode` in [`TrainingConfig`](./aletheia/aletheia_config.py) controls strictness for activation and config validation.
 - `optimizer_restore_mode` supports `strict`, `auto`, and `skip` restore behavior.
 - telemetry and evidence paths coerce inputs into bounded tensors and finite numeric ranges instead of silently accepting polluted values.
-- runtime compensation logic handles degraded phases, late triggers, post-solved fallback, and release guards.
+- runtime compensation logic handles degraded phases, late triggers, and fallback guards.
 
 These are not side features. They are part of the design contract.
 
@@ -212,18 +212,18 @@ from aletheia.contracts.core import make_semantic_contract, SemanticArbiter
 # 1. Initialize a reference value tensor.
 value_ref = torch.randn(1, 4)
 
-# 2. Build an internal contract, e.g. a world-model prediction.
+# 2. Build a primary contract, e.g. a model prediction.
 internal_contract = make_semantic_contract(
     value=value_ref,
-    source="internal_world_model",
+    source="primary_model_prediction",
     confidence=torch.full_like(value_ref, 0.8),
     trust=torch.full_like(value_ref, 0.9),
 )
 
-# 3. Build an external contract, e.g. a ground-truth evaluator or anchor.
+# 3. Build a reference contract, e.g. an evaluator or anchor signal.
 external_contract = make_semantic_contract(
     value=value_ref + 0.1,
-    source="eval_ground_truth",
+    source="reference_evaluator",
     coverage=torch.full_like(value_ref, 1.0),
     confidence=torch.full_like(value_ref, 0.95),
     certified_by=("task_corridor",),
@@ -238,7 +238,7 @@ decision = arbiter.arbitrate_bootstrap(
     modulation_bonus=torch.full_like(value_ref, 0.1),
 )
 
-print("External authority weight:", decision.external_authority.mean().item())
+print("Reference authority weight:", decision.external_authority.mean().item())
 ```
 
 The returned decision is a bounded, inspectable arbitration result. It is not just a scalar blend factor.
@@ -267,7 +267,7 @@ It handles:
 
 - external evaluation feedback
 - compensation phase transitions
-- persistence and release guards
+- persistence and restore guards
 - runtime RL context
 
 ### `aletheia/aletheia_train.py`
@@ -310,7 +310,7 @@ Examples:
 - contract tensors are bounded and shape-checked
 - telemetry and evidence are normalized before use
 - activation validation can run in strict mode
-- training can distinguish real, imagined, post-solved, and fallback phases
+- training can distinguish live, imagined, and fallback phases
 
 This matters because the repository is not trying to hide uncertainty. It is trying to make uncertainty explicit enough to control.
 
