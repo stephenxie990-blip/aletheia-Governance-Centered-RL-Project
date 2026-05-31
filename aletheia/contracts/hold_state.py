@@ -52,7 +52,7 @@ def update_hold_state_channels(
     release_pressure_mean: float,
     inactive_decay: float = 0.99,
 ) -> dict[str, float]:
-    del release_pressure_mean
+    del release_pressure_mean  # compat: callers may pass this; currently unused
     if not isinstance(hold_state, dict):
         hold_state = {channel: float(hold_state) for channel in HOLD_CHANNELS}
     current_channel = active_hold_channel(late_gate_mean)

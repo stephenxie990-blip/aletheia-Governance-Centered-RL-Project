@@ -1854,6 +1854,7 @@ def resolve_imag_compensation_phase(
     adaptive_scale: float,
     trigger_confirmed: bool,
 ) -> CompensationDecision:
+    # compat: callers may pass these; currently unused in this path
     del gap_mean, commit_gap_abs, commit_gap_mean, cont_mean, actor_target_raw
     current_step = max(0, int(getattr(runtime, "global_step", 0)))
     episode_return_ema = (

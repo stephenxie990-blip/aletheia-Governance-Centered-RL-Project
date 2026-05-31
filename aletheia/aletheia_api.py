@@ -82,7 +82,7 @@ from ._run_artifact_schema import (
 try:
     from .aletheia_foundation import __version__, VERSION_NAME
 except ImportError:
-    __version__ = "5.0.0"
+    __version__ = "5.0.2"
     VERSION_NAME = "Aletheia Unified API"
 
 logger = logging.getLogger("aletheia.api")
