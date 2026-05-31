@@ -227,35 +227,14 @@ def compute_bootstrap_bonus_source_transition_bridge_contract(
         else torch.zeros_like(reference)
     )
     anchor_available = contract_tensor_like(reference, critic_anchor_available_next, 0.0).clamp(0.0, 1.0)
-    reward_truth = (
-        contract_tensor_like(reference, reference_real_reward_agreement, 1.0).clamp(0.0, 1.0)
-        if isinstance(reference_real_reward_agreement, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(reference_real_reward_agreement))),
-        )
-    )
+    reward_truth = contract_tensor_like(reference, reference_real_reward_agreement, 1.0).clamp(0.0, 1.0)
     real_recovery = contract_tensor_like(reference, behavior_policy_task_cert_real_recovery, 1.0).clamp(0.0, 1.0)
     real_alarm = contract_tensor_like(reference, behavior_policy_task_cert_real_alarm, 0.0).clamp(0.0, 1.0)
     imag_gate = contract_tensor_like(reference, behavior_policy_task_cert_imag_gate, 1.0).clamp(0.0, 1.0)
     task_gate = contract_tensor_like(reference, task_corridor_gate, 1.0).clamp(0.0, 1.0)
     corridor_mask = contract_tensor_like(reference, corridor_semantic_corridor_mask, 0.0).clamp(0.0, 1.0)
-    task_degradation = (
-        contract_tensor_like(reference, critic_contract_task_degradation, 0.0).clamp(0.0, 1.0)
-        if isinstance(critic_contract_task_degradation, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_task_degradation))),
-        )
-    )
-    late_gate = (
-        contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
-        if isinstance(critic_contract_bootstrap_late_gate, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_late_gate))),
-        )
-    )
+    task_degradation = contract_tensor_like(reference, critic_contract_task_degradation, 0.0).clamp(0.0, 1.0)
+    late_gate = contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
     reward_semantic_bridge_source = torch.where(anchor_available > 0.0, anchor_value, internal_value)
     source_transition_truth = torch.maximum(reward_truth, real_recovery).clamp(0.0, 1.0)
     source_transition_alignment = torch.maximum(imag_gate, task_gate).clamp(0.0, 1.0)
@@ -343,17 +322,7 @@ def compute_bootstrap_bonus_source_seed_quality_contract(
     dense_seed_support = contract_tensor_like(reference, bootstrap_dense_seed_support, 0.0).clamp(
         0.0, 1.0
     )
-    if isinstance(critic_contract_bootstrap_regime_quality_gate, Tensor):
-        regime_quality_gate = contract_tensor_like(
-            reference,
-            critic_contract_bootstrap_regime_quality_gate,
-            1.0,
-        ).clamp(0.0, 1.0)
-    else:
-        regime_quality_gate = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_regime_quality_gate))),
-        )
+    regime_quality_gate = contract_tensor_like(reference, critic_contract_bootstrap_regime_quality_gate, 1.0).clamp(0.0, 1.0)
     raw_vs_clean_gap = (
         critic_contract_bootstrap_raw_vs_clean_gap.detach().to(
             device=reference.device,
@@ -369,24 +338,8 @@ def compute_bootstrap_bonus_source_seed_quality_contract(
     source_alignment = contract_tensor_like(
         reference, critic_contract_bootstrap_source_semantic_alignment, 1.0
     ).clamp(0.0, 1.0)
-    if isinstance(critic_contract_task_degradation, Tensor):
-        task_degradation = contract_tensor_like(
-            reference, critic_contract_task_degradation, 0.0
-        ).clamp(0.0, 1.0)
-    else:
-        task_degradation = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_task_degradation))),
-        )
-    if isinstance(critic_contract_bootstrap_late_gate, Tensor):
-        late_gate = contract_tensor_like(
-            reference, critic_contract_bootstrap_late_gate, 0.0
-        ).clamp(0.0, 1.0)
-    else:
-        late_gate = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_late_gate))),
-        )
+    task_degradation = contract_tensor_like(reference, critic_contract_task_degradation, 0.0).clamp(0.0, 1.0)
+    late_gate = contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
     source_quality = torch.minimum(source_truth, source_alignment).clamp(0.0, 1.0)
     raw_gap_health = (6.0 / (6.0 + raw_vs_clean_gap)).clamp(0.0, 1.0)
     task_health = (1.0 - task_degradation).clamp(0.0, 1.0)
@@ -474,14 +427,7 @@ def compute_bootstrap_bonus_terminal_truth_source_contract(
         else torch.zeros_like(reference)
     )
     anchor_available = contract_tensor_like(reference, critic_anchor_available_next, 0.0).clamp(0.0, 1.0)
-    reward_truth = (
-        contract_tensor_like(reference, reference_real_reward_agreement, 1.0).clamp(0.0, 1.0)
-        if isinstance(reference_real_reward_agreement, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(reference_real_reward_agreement))),
-        )
-    )
+    reward_truth = contract_tensor_like(reference, reference_real_reward_agreement, 1.0).clamp(0.0, 1.0)
     real_recovery = contract_tensor_like(reference, behavior_policy_task_cert_real_recovery, 1.0).clamp(0.0, 1.0)
     real_alarm = contract_tensor_like(reference, behavior_policy_task_cert_real_alarm, 0.0).clamp(0.0, 1.0)
     imag_gate = contract_tensor_like(reference, behavior_policy_task_cert_imag_gate, 1.0).clamp(0.0, 1.0)
@@ -493,30 +439,9 @@ def compute_bootstrap_bonus_terminal_truth_source_contract(
         and critic_contract_bootstrap_raw_vs_clean_gap.shape == reference.shape
         else torch.zeros_like(reference)
     ).clamp(min=0.0)
-    task_degradation = (
-        contract_tensor_like(reference, critic_contract_task_degradation, 0.0).clamp(0.0, 1.0)
-        if isinstance(critic_contract_task_degradation, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_task_degradation))),
-        )
-    )
-    late_gate = (
-        contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
-        if isinstance(critic_contract_bootstrap_late_gate, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_late_gate))),
-        )
-    )
-    bonus_hold_state = (
-        contract_tensor_like(reference, critic_contract_bootstrap_bonus_hold_state, 0.0).clamp(0.0, 1.0)
-        if isinstance(critic_contract_bootstrap_bonus_hold_state, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_bonus_hold_state))),
-        )
-    )
+    task_degradation = contract_tensor_like(reference, critic_contract_task_degradation, 0.0).clamp(0.0, 1.0)
+    late_gate = contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
+    bonus_hold_state = contract_tensor_like(reference, critic_contract_bootstrap_bonus_hold_state, 0.0).clamp(0.0, 1.0)
     source_terminal_truth = torch.maximum(reward_truth, real_recovery).clamp(0.0, 1.0)
     source_terminal_alignment = torch.maximum(imag_gate, task_gate).clamp(0.0, 1.0)
     source_terminal_support = torch.where(
@@ -627,35 +552,9 @@ def compute_bootstrap_final_external_value_quality_contract(
     source_alignment = contract_tensor_like(
         reference, critic_contract_bootstrap_source_semantic_alignment, 1.0
     ).clamp(0.0, 1.0)
-    if isinstance(actor_contract_task_mismatch, Tensor):
-        task_mismatch = contract_tensor_like(reference, actor_contract_task_mismatch, 0.0).clamp(
-            min=0.0
-        )
-    else:
-        task_mismatch = torch.full_like(
-            reference,
-            max(0.0, float(actor_contract_task_mismatch)),
-        )
-    if isinstance(actor_corridor_semantic_inflation_excess, Tensor):
-        inflation_excess = contract_tensor_like(
-            reference, actor_corridor_semantic_inflation_excess, 0.0
-        ).clamp(min=0.0)
-    else:
-        inflation_excess = torch.full_like(
-            reference,
-            max(0.0, float(actor_corridor_semantic_inflation_excess)),
-        )
-    if isinstance(critic_contract_bootstrap_late_gate, Tensor):
-        late_gate = contract_tensor_like(
-            reference,
-            critic_contract_bootstrap_late_gate,
-            0.0,
-        ).clamp(0.0, 1.0)
-    else:
-        late_gate = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_late_gate))),
-        )
+    task_mismatch = contract_tensor_like(reference, actor_contract_task_mismatch, 0.0).clamp(min=0.0)
+    inflation_excess = contract_tensor_like(reference, actor_corridor_semantic_inflation_excess, 0.0).clamp(min=0.0)
+    late_gate = contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
     if isinstance(critic_contract_bootstrap_source_hold_window_activation, Tensor):
         hold_window_activation = contract_tensor_like(
             reference,
@@ -670,28 +569,8 @@ def compute_bootstrap_final_external_value_quality_contract(
                 max(0.0, float(critic_contract_bootstrap_source_hold_window_activation)),
             ),
         )
-    if isinstance(actor_high_value_but_low_task_fraction, Tensor):
-        high_value_but_low_task_fraction = contract_tensor_like(
-            reference,
-            actor_high_value_but_low_task_fraction,
-            0.0,
-        ).clamp(0.0, 1.0)
-    else:
-        high_value_but_low_task_fraction = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(actor_high_value_but_low_task_fraction))),
-        )
-    if isinstance(actor_task_geom_corridor_disagreement, Tensor):
-        task_geom_corridor_disagreement = contract_tensor_like(
-            reference,
-            actor_task_geom_corridor_disagreement,
-            0.0,
-        ).clamp(0.0, 1.0)
-    else:
-        task_geom_corridor_disagreement = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(actor_task_geom_corridor_disagreement))),
-        )
+    high_value_but_low_task_fraction = contract_tensor_like(reference, actor_high_value_but_low_task_fraction, 0.0).clamp(0.0, 1.0)
+    task_geom_corridor_disagreement = contract_tensor_like(reference, actor_task_geom_corridor_disagreement, 0.0).clamp(0.0, 1.0)
     source_quality = torch.minimum(source_truth, source_alignment).clamp(0.0, 1.0)
     raw_gap_health = (6.0 / (6.0 + raw_vs_clean_gap)).clamp(0.0, 1.0)
     task_health = (1.0 - task_mismatch / 0.30).clamp(0.0, 1.0)
@@ -1479,35 +1358,14 @@ def compute_bootstrap_bonus_source_value_replacement_contract(
         and reward_semantic_bonus_source_value.shape == reference.shape
         else torch.where(anchor_available, anchor_value, internal_value)
     )
-    reward_truth = (
-        contract_tensor_like(reference, reference_real_reward_agreement, 1.0).clamp(0.0, 1.0)
-        if isinstance(reference_real_reward_agreement, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(reference_real_reward_agreement))),
-        )
-    )
+    reward_truth = contract_tensor_like(reference, reference_real_reward_agreement, 1.0).clamp(0.0, 1.0)
     real_recovery = contract_tensor_like(reference, behavior_policy_task_cert_real_recovery, 1.0).clamp(0.0, 1.0)
     support_mask = contract_tensor_like(reference, behavior_policy_task_cert_support_mask, 1.0).clamp(0.0, 1.0)
     imag_gate = contract_tensor_like(reference, behavior_policy_task_cert_imag_gate, 1.0).clamp(0.0, 1.0)
     task_gate = contract_tensor_like(reference, task_corridor_gate, 1.0).clamp(0.0, 1.0)
     corridor_mask = contract_tensor_like(reference, corridor_semantic_corridor_mask, 0.0).clamp(0.0, 1.0)
-    task_degradation = (
-        contract_tensor_like(reference, critic_contract_task_degradation, 0.0).clamp(0.0, 1.0)
-        if isinstance(critic_contract_task_degradation, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_task_degradation))),
-        )
-    )
-    late_gate = (
-        contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
-        if isinstance(critic_contract_bootstrap_late_gate, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_late_gate))),
-        )
-    )
+    task_degradation = contract_tensor_like(reference, critic_contract_task_degradation, 0.0).clamp(0.0, 1.0)
+    late_gate = contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
     source_value_truth = torch.maximum(reward_truth, real_recovery).clamp(0.0, 1.0)
     source_value_alignment = torch.maximum(imag_gate, task_gate).clamp(0.0, 1.0)
     source_value_support = torch.where(
@@ -1704,71 +1562,23 @@ def compute_bootstrap_bonus_source_hold_persistence_contract(
         if isinstance(reward_semantic_hold_source_value, Tensor) and reward_semantic_hold_source_value.shape == reference.shape
         else torch.where(anchor_available > 0.0, anchor_value, internal_value)
     )
-    reward_truth = (
-        contract_tensor_like(reference, reference_real_reward_agreement, 1.0).clamp(0.0, 1.0)
-        if isinstance(reference_real_reward_agreement, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(reference_real_reward_agreement))),
-        )
-    )
+    reward_truth = contract_tensor_like(reference, reference_real_reward_agreement, 1.0).clamp(0.0, 1.0)
     real_recovery = contract_tensor_like(reference, behavior_policy_task_cert_real_recovery, 1.0).clamp(0.0, 1.0)
     real_alarm = contract_tensor_like(reference, behavior_policy_task_cert_real_alarm, 0.0).clamp(0.0, 1.0)
     imag_gate = contract_tensor_like(reference, behavior_policy_task_cert_imag_gate, 1.0).clamp(0.0, 1.0)
     task_gate = contract_tensor_like(reference, task_corridor_gate, 1.0).clamp(0.0, 1.0)
     corridor_mask = contract_tensor_like(reference, corridor_semantic_corridor_mask, 0.0).clamp(0.0, 1.0)
-    task_degradation = (
-        contract_tensor_like(reference, critic_contract_task_degradation, 0.0).clamp(0.0, 1.0)
-        if isinstance(critic_contract_task_degradation, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_task_degradation))),
-        )
-    )
-    late_gate = (
-        contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
-        if isinstance(critic_contract_bootstrap_late_gate, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_late_gate))),
-        )
-    )
+    task_degradation = contract_tensor_like(reference, critic_contract_task_degradation, 0.0).clamp(0.0, 1.0)
+    late_gate = contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
     transition_bridge_gate = contract_tensor_like(
         reference, critic_contract_bootstrap_source_transition_bridge_gate, 0.0
     ).clamp(0.0, 1.0)
     late_window_activation = contract_tensor_like(
         reference, critic_contract_bootstrap_source_value_late_window_activation, 0.0
     ).clamp(0.0, 1.0)
-    bonus_hold_state = (
-        contract_tensor_like(reference, critic_contract_bootstrap_bonus_hold_state, 0.0).clamp(0.0, 1.0)
-        if isinstance(critic_contract_bootstrap_bonus_hold_state, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_bonus_hold_state))),
-        )
-    )
-    if isinstance(critic_contract_bootstrap_floor_value_injection_gate, Tensor):
-        floor_value_gate = contract_tensor_like(
-            reference,
-            critic_contract_bootstrap_floor_value_injection_gate,
-            1.0,
-        ).clamp(0.0, 1.0)
-    else:
-        floor_value_gate = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_floor_value_injection_gate))),
-        )
-    if isinstance(critic_contract_bootstrap_final_value_injection_gate, Tensor):
-        final_value_gate = contract_tensor_like(
-            reference,
-            critic_contract_bootstrap_final_value_injection_gate,
-            1.0,
-        ).clamp(0.0, 1.0)
-    else:
-        final_value_gate = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_final_value_injection_gate))),
-        )
+    bonus_hold_state = contract_tensor_like(reference, critic_contract_bootstrap_bonus_hold_state, 0.0).clamp(0.0, 1.0)
+    floor_value_gate = contract_tensor_like(reference, critic_contract_bootstrap_floor_value_injection_gate, 1.0).clamp(0.0, 1.0)
+    final_value_gate = contract_tensor_like(reference, critic_contract_bootstrap_final_value_injection_gate, 1.0).clamp(0.0, 1.0)
     source_hold_truth = torch.maximum(reward_truth, real_recovery).clamp(0.0, 1.0)
     source_hold_alignment = torch.maximum(imag_gate, task_gate).clamp(0.0, 1.0)
     source_hold_support = torch.where(
@@ -1885,43 +1695,15 @@ def compute_bootstrap_bonus_consumer_retention_contract(
         if isinstance(bootstrap_external_bonus_terminal_truth_source, Tensor) and bootstrap_external_bonus_terminal_truth_source.shape == reference.shape
         else torch.zeros_like(reference)
     )
-    reward_truth = (
-        contract_tensor_like(reference, reference_real_reward_agreement, 1.0).clamp(0.0, 1.0)
-        if isinstance(reference_real_reward_agreement, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(reference_real_reward_agreement))),
-        )
-    )
+    reward_truth = contract_tensor_like(reference, reference_real_reward_agreement, 1.0).clamp(0.0, 1.0)
     real_recovery = contract_tensor_like(reference, behavior_policy_task_cert_real_recovery, 1.0).clamp(0.0, 1.0)
     real_alarm = contract_tensor_like(reference, behavior_policy_task_cert_real_alarm, 0.0).clamp(0.0, 1.0)
     imag_gate = contract_tensor_like(reference, behavior_policy_task_cert_imag_gate, 1.0).clamp(0.0, 1.0)
     task_gate = contract_tensor_like(reference, task_corridor_gate, 1.0).clamp(0.0, 1.0)
     corridor_mask = contract_tensor_like(reference, corridor_semantic_corridor_mask, 0.0).clamp(0.0, 1.0)
-    task_degradation = (
-        contract_tensor_like(reference, critic_contract_task_degradation, 0.0).clamp(0.0, 1.0)
-        if isinstance(critic_contract_task_degradation, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_task_degradation))),
-        )
-    )
-    late_gate = (
-        contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
-        if isinstance(critic_contract_bootstrap_late_gate, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_late_gate))),
-        )
-    )
-    bonus_hold_state = (
-        contract_tensor_like(reference, critic_contract_bootstrap_bonus_hold_state, 0.0).clamp(0.0, 1.0)
-        if isinstance(critic_contract_bootstrap_bonus_hold_state, Tensor)
-        else torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_bonus_hold_state))),
-        )
-    )
+    task_degradation = contract_tensor_like(reference, critic_contract_task_degradation, 0.0).clamp(0.0, 1.0)
+    late_gate = contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
+    bonus_hold_state = contract_tensor_like(reference, critic_contract_bootstrap_bonus_hold_state, 0.0).clamp(0.0, 1.0)
     persistence_gate = contract_tensor_like(reference, critic_contract_bootstrap_source_hold_persistence_gate, 0.0).clamp(0.0, 1.0)
     source_consumer_truth = torch.maximum(reward_truth, real_recovery).clamp(0.0, 1.0)
     source_consumer_alignment = torch.maximum(imag_gate, task_gate).clamp(0.0, 1.0)
