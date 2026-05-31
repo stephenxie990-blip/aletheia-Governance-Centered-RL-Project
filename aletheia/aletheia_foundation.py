@@ -766,6 +766,7 @@ class ActionCodec(nn.Module):
 
         self.action_dim = int(action_dim)
         self.is_discrete = bool(is_discrete)
+        self.embed_dim = int(config.embed_dim)
         self.config = config
 
         if (not self.is_discrete) and action_low is not None and action_high is not None:
