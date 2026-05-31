@@ -6,6 +6,8 @@
 
 A governance-first, trust-driven reinforcement learning system that treats credibility as a first-class training primitive.
 
+Author: stephen
+
 Aletheia is not organized around algorithms first. It is organized around **what should be trusted**.
 
 Instead of treating value estimates, bootstrap targets, and external feedback as interchangeable tensors, the codebase wraps them in contracts, evidence bundles, certification states, and authority decisions. The result is a research RL stack that is explicit about provenance, fail-safe behavior, and source arbitration.
