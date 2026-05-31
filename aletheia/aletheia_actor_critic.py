@@ -68,11 +68,13 @@ from torch import Tensor
 
 # --- Project-internal imports (single point) ---
 from .aletheia_foundation import (
+    ActionCodec,
     build_mlp,
     gamma_to_key,
     huber_loss,
     get_activation,
     get_activation_class,
+    is_multihead_critic,
     soft_update,
     symlog as _foundation_symlog,
     symexp as _foundation_symexp,
@@ -1065,110 +1067,7 @@ def build_actor(
     )
 
 
-# =============================================================================
-# 11  ActionCodec
-# =============================================================================
-
-
-class ActionCodec(nn.Module):
-    """
-    Action encoder / decoder.
-
-    encode:  env action → embedding
-    decode:  embedding  → raw action ∈ [-1, 1]
-    scale:   [-1, 1]    → [low, high]
-    """
-
-    def __init__(
-        self,
-        action_dim: int,
-        is_discrete: bool,
-        config: Optional[ActionCodecConfig] = None,
-        action_low: Optional[np.ndarray] = None,
-        action_high: Optional[np.ndarray] = None,
-    ):
-        super().__init__()
-        if config is None:
-            config = ActionCodecConfig()
-
-        self.action_dim = action_dim
-        self.is_discrete = is_discrete
-        self.embed_dim = config.embed_dim
-        self.config = config
-
-        if not is_discrete and action_low is not None and action_high is not None:
-            low = torch.as_tensor(action_low, dtype=torch.float32)
-            high = torch.as_tensor(action_high, dtype=torch.float32)
-            self.register_buffer("action_low", low)
-            self.register_buffer("action_high", high)
-            self.register_buffer("action_scale", (high - low) / 2.0)
-            self.register_buffer("action_bias", (high + low) / 2.0)
-        else:
-            self.action_low = None
-            self.action_high = None
-            self.action_scale = None
-            self.action_bias = None
-
-        hidden = tuple(config.hidden_dims)
-
-        self.encoder = build_mlp(
-            in_dim=action_dim,
-            out_dim=config.embed_dim,
-            hidden_dims=hidden,
-            norm=_norm_from_layer_flag(config.use_layer_norm),
-            output_activation=True,
-            final_gain=1.0,
-        )
-        self.decoder = build_mlp(
-            in_dim=config.embed_dim,
-            out_dim=action_dim,
-            hidden_dims=hidden[::-1],
-            norm=_norm_from_layer_flag(config.use_layer_norm),
-            output_activation=False,
-            final_gain=1.0,
-        )
-
-    def scale_action(self, action: Tensor) -> Tensor:
-        if self.action_scale is None:
-            return action
-        return action * self.action_scale + self.action_bias
-
-    def unscale_action(self, action: Tensor) -> Tensor:
-        if self.action_scale is None:
-            return action
-        return (action - self.action_bias) / (self.action_scale + 1e-8)
-
-    def encode(self, action: Tensor) -> Tensor:
-        return self.encoder(action)
-
-    def decode(self, embed: Tensor) -> Tensor:
-        raw = self.decoder(embed)
-        return raw if self.is_discrete else torch.tanh(raw)
-
-    def decode_to_env(self, embed: Tensor) -> Tensor:
-        raw = self.decode(embed)
-        return raw if self.is_discrete else self.scale_action(raw)
-
-    def forward(self, action: Tensor) -> Tensor:
-        return self.encode(action)
-
-    @classmethod
-    def from_action_space(
-        cls,
-        action_space: Any,
-        config: Optional[ActionCodecConfig] = None,
-    ) -> "ActionCodec":
-        if hasattr(action_space, "n"):
-            return cls(
-                action_dim=action_space.n, is_discrete=True, config=config,
-            )
-        return cls(
-            action_dim=int(np.prod(action_space.shape)),
-            is_discrete=False,
-            config=config,
-            action_low=action_space.low,
-            action_high=action_space.high,
-        )
+# ActionCodec re-exported from aletheia_foundation (canonical definition).
 
 
 # =============================================================================
@@ -2812,10 +2711,7 @@ def create_will_optimizer(
 # =============================================================================
 
 
-def is_multihead_critic(c: nn.Module) -> bool:
-    """Check if a critic module has multiple γ heads."""
-    gammas = getattr(c, "gammas", ())
-    return len(gammas) > 1
+# is_multihead_critic re-exported from aletheia_foundation (canonical definition).
 
 
 class ActorCritic(nn.Module):
