@@ -545,8 +545,8 @@ def compute_bootstrap_final_external_value_quality_contract(
     source_alignment = contract_tensor_like(
         reference, critic_contract_bootstrap_source_semantic_alignment, 1.0
     ).clamp(0.0, 1.0)
-    task_mismatch = contract_tensor_like(reference, actor_contract_task_mismatch, 0.0).clamp(min=0.0)
-    inflation_excess = contract_tensor_like(reference, actor_corridor_semantic_inflation_excess, 0.0).clamp(min=0.0)
+    task_mismatch = _value_tensor_like(reference, actor_contract_task_mismatch, 0.0).clamp(min=0.0)
+    inflation_excess = _value_tensor_like(reference, actor_corridor_semantic_inflation_excess, 0.0).clamp(min=0.0)
     late_gate = contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
     hold_window_activation = contract_tensor_like(reference, critic_contract_bootstrap_source_hold_window_activation, 0.0).clamp(0.0, 1.0)
     high_value_but_low_task_fraction = contract_tensor_like(reference, actor_high_value_but_low_task_fraction, 0.0).clamp(0.0, 1.0)
