@@ -1,68 +1,37 @@
 # Aletheia
 
-Aletheia is a governance-first reinforcement learning system.
+![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)
+![Tests: 603 passing](https://img.shields.io/badge/tests-603%20passing-brightgreen.svg)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)
 
-License: Apache-2.0
+A governance-first, trust-driven reinforcement learning system that treats credibility as a first-class training primitive.
 
-Most RL projects are organized around algorithms. Aletheia is organized around **trust**.
+Aletheia is not organized around algorithms first. It is organized around **what should be trusted**.
 
-It is built on a simple premise:
-
-> Optimization is only meaningful when the source of value is trusted.
-
-That changes the codebase shape. Instead of treating value estimates, bootstrap targets, and external feedback as interchangeable tensors, Aletheia wraps them in semantic contracts, evidence bundles, certification states, and authority decisions.
-
-In short:
-
-- mainstream RL asks: "How do we train a better policy?"
-- Aletheia asks: "How do we know the thing we are training on is credible?"
+Instead of treating value estimates, bootstrap targets, and external feedback as interchangeable tensors, the codebase wraps them in contracts, evidence bundles, certification states, and authority decisions. The result is a research RL stack that is explicit about provenance, fail-safe behavior, and source arbitration.
 
 ## Why It Exists
 
-Classic RL frameworks usually optimize a scalar objective and spend most of their complexity budget on sampling efficiency, network architecture, or loss shaping.
+Classic RL systems usually optimize a scalar objective and then patch around the edges with heuristics.
 
-Aletheia is aimed at a different problem:
+Aletheia is built for a harder setting:
 
-- training signals can come from multiple sources
+- signals can come from multiple sources
 - those sources may disagree
 - some sources should dominate others
 - some signals should be rejected outright
 - the system should keep working when signal quality degrades
 
-So the project focuses on:
+That leads to a different design target:
 
-- source provenance
-- authority arbitration
-- certification and admissibility
-- semantic debt tracking
-- compensation and fallback logic
-
-The result is a reinforcement learning stack that is explicitly designed around governance, not just optimization.
-
-## System Overview
-
-```mermaid
-flowchart LR
-    E[Environment] --> P[Perceptor / World Model]
-    P --> A[Actor]
-    P --> C[Critic]
-    A --> T[Training Loop]
-    C --> T
-    T --> H[Evidence and Contracts]
-    H --> R[Authority / Certification / Arbiter]
-    R --> T
-    T --> K[Checkpoint / Artifacts]
-    T --> X[Evaluation]
-    X --> H
-```
-
-The training loop does not just optimize on raw trajectories. It repeatedly converts observations into evidence, evaluates contract status, and decides which signal source should be trusted for the next step.
+- not just "train faster"
+- but "verify what is being trained on"
 
 ## What Makes It Different
 
-### 1. It is organized by governance units, not algorithm units
+### Governance-first organization
 
-Traditional RL code is often organized as:
+Mainstream RL code is typically organized around algorithmic parts:
 
 ```text
 ppo/
@@ -71,7 +40,7 @@ policies/
 envs/
 ```
 
-Aletheia is organized more like:
+Aletheia is organized around governance units:
 
 ```text
 contracts/
@@ -80,11 +49,11 @@ runtime/
 checkpoint/
 ```
 
-That difference matters because it reflects the project’s core belief: the first thing worth modeling is not the algorithm, but the trust boundary around the signal.
+That difference is the point. The repository is structured around the belief that trust boundaries are a first-class architectural primitive.
 
-### 2. It treats value as something that must be justified
+### Signal credibility as a core object
 
-In Aletheia, a value estimate is not just a number. It can carry:
+In Aletheia, a value signal is not just a tensor. It can carry:
 
 - source
 - coverage
@@ -94,124 +63,201 @@ In Aletheia, a value estimate is not just a number. It can carry:
 - task agreement
 - registry support
 - semantic debt
+- freshness
 - certification tags
 
-This makes it possible to answer questions like:
+This makes it possible to ask concrete questions like:
 
-- Is this value external or internal?
-- Was it certified by a task corridor or geometry corridor?
-- Is the bootstrap source eligible to dominate?
-- Is the current training signal too stale or too polluted?
+- Is the source internal or external?
+- Is it task-certified or geometry-certified?
+- Is it stale?
+- Should it dominate the current training target?
+- Is it too degraded to be trusted?
 
-### 3. It separates evidence from decision
+## Key Technical Subsystems
 
-The code does not conflate raw signal, evidence, and final authority.
+### Multi-channel certification corridors
 
-- `EvidenceBundle` collects raw support data
-- `SemanticContract` packages the signal with provenance and governance metadata
-- `SemanticArbiter` decides which contract should dominate
-- `AuthorityDecision` records the resulting authority state
+The certification system distinguishes between geometry-style support and task-style support through certification labels such as `geometry_corridor` and `task_corridor`.
 
-That separation is one of the main reasons the repository looks different from a standard RL project.
+[`compute_task_certification()`](./aletheia/contracts/certification.py) combines:
 
-## Architecture
+- imagined task gate
+- task confidence
+- real evaluation gate
+- real reward agreement
+- previous real task state
+- geometry support
+- registry support
 
-### Configuration and profiles
+It also applies a recursive smoothing update so real certification does not jump erratically when evidence changes. The output is a structured [`CertificationState`](./aletheia/contracts/certification.py) rather than a single scalar.
 
-[`aletheia/aletheia_config.py`](/Users/zhangsan/Desktop/缸中之脑v6.0/aletheia/aletheia_config.py) defines:
+### Semantic contracts
 
-- environment profiles
-- model and RL config
-- router config
-- training params
-- checkpoint restore policy
+[`SemanticContract`](./aletheia/contracts/core.py) is the main trust object in the repo.
 
-The environment image is explicit. The system does not assume that one set of settings fits all tasks.
+It packages:
 
-### Representation and policy stack
+- `value`: the actual tensor being trusted
+- `coverage`: how complete the signal is
+- `confidence`: local predictive reliability
+- `authority`: how much weight it should carry
+- `trust`: historical credibility
+- `task_agreement`: alignment with task evidence
+- `registry_support`: support from the registry/corridor side
+- `semantic_debt`: degradation or mismatch pressure
+- `freshness`: age / staleness indicator
+- `certified_by`: explicit certification labels
 
-[`aletheia/aletheia_world_model.py`](/Users/zhangsan/Desktop/缸中之脑v6.0/aletheia/aletheia_world_model.py) and [`aletheia/aletheia_actor_critic.py`](/Users/zhangsan/Desktop/缸中之脑v6.0/aletheia/aletheia_actor_critic.py) provide:
+The important part is not that these values exist. The important part is that the training system reasons over them directly.
 
-- the perceptor
-- the world model
-- feature routing
-- actor and critic modules
-- intrinsic motivation / will modules
+### Dynamic arbitration and takeover control
 
-The system is assembled as a component stack, not a single monolithic policy network.
+[`SemanticArbiter`](./aletheia/contracts/core.py) performs explicit arbitration between internal and external contracts.
 
-### Contract and evidence system
+It computes:
 
-[`aletheia/contracts/`](/Users/zhangsan/Desktop/缸中之脑v6.0/aletheia/contracts) is the heart of the repository.
+- a takeover floor
+- a modulation bonus
+- a cap on external authority
+- internal vs. external authority weights
 
-Important modules:
+That lets the system do safe takeover, bounded replacement, and controlled authority blending instead of blindly trusting whichever signal arrived last.
 
-- [`core.py`](/Users/zhangsan/Desktop/缸中之脑v6.0/aletheia/contracts/core.py) for `SemanticContract`, `SemanticArbiter`, and contract helpers
-- [`authority.py`](/Users/zhangsan/Desktop/缸中之脑v6.0/aletheia/contracts/authority.py) for bootstrap and takeover authority logic
-- [`evidence.py`](/Users/zhangsan/Desktop/缸中之脑v6.0/aletheia/contracts/evidence.py) for evidence bundles and real-feedback snapshots
-- [`certification.py`](/Users/zhangsan/Desktop/缸中之脑v6.0/aletheia/contracts/certification.py) for task certification and registry support
-- [`consumers.py`](/Users/zhangsan/Desktop/缸中之脑v6.0/aletheia/contracts/consumers.py) for consumer-facing contract views
-- [`hold_state.py`](/Users/zhangsan/Desktop/缸中之脑v6.0/aletheia/contracts/hold_state.py) for canonical hold-state management
+### Production-grade fail-safe mechanics
 
-This layer is the clearest expression of the project philosophy.
+Aletheia includes defensive behavior that is easy to miss if you only look at the high-level architecture:
 
-### Training and compensation
+- [`TrainingCheckpointRestorePolicy`](./aletheia/_training_checkpoint_schema.py) blocks unsafe checkpoint restoration when model or optimizer restore modes do not match expectations.
+- `validation_mode` in [`TrainingConfig`](./aletheia/aletheia_config.py) controls strictness for activation and config validation.
+- `optimizer_restore_mode` supports `strict`, `auto`, and `skip` restore behavior.
+- telemetry and evidence paths coerce inputs into bounded tensors and finite numeric ranges instead of silently accepting polluted values.
+- runtime compensation logic handles degraded phases, late triggers, post-solved fallback, and release guards.
 
-[`aletheia/aletheia_train.py`](/Users/zhangsan/Desktop/缸中之脑v6.0/aletheia/aletheia_train.py) and [`aletheia/training/`](/Users/zhangsan/Desktop/缸中之脑v6.0/aletheia/training) implement:
+These are not side features. They are part of the design contract.
 
-- replay collection
-- rollout collection
-- imagination updates
-- loss computation
-- optimizer orchestration
-- compensation and fallback logic
-- training loop scheduling
+## System Overview
 
-The training subsystem is not just a learner. It is also a runtime control system that reacts to degraded or ambiguous conditions.
+```mermaid
+flowchart LR
+    subgraph Input["Environment and Input Layer"]
+        E["Environment / Rollout"]
+        C["EnvProfile + TrainingConfig"]
+    end
 
-### Runtime and persistence
+    subgraph Representation["Representation Layer"]
+        P["Perceptor"]
+        WM["World Model"]
+        R["Feature Router"]
+    end
 
-The repository also includes:
+    subgraph Trust["Trust Layer"]
+        EB["EvidenceBundle"]
+        SC["SemanticContract"]
+        CA["CertificationState"]
+        SA["SemanticArbiter"]
+        AD["AuthorityDecision"]
+    end
 
-- checkpoint schemas
-- artifact schemas
-- runtime helpers
-- safe restore policies
-- training and evaluation summaries
+    subgraph Learning["Training Layer"]
+        RB["ReplayBuffer"]
+        RC["RolloutCollector"]
+        IM["ImaginationEngine"]
+        TS["TrainingStep"]
+        TL["TrainingLoop"]
+    end
 
-That makes experiments inspectable, resumable, and auditable.
+    subgraph Control["Runtime Control Layer"]
+        CK["Checkpoint / Restore Policy"]
+        CP["Compensation Kernel"]
+        RT["Runtime Helpers"]
+        AR["Artifacts / Metrics"]
+    end
 
-## Main Flow
+    E --> RC
+    C --> TL
+    RC --> RB
+    RC --> IM
+    P --> WM --> R
+    RB --> TS
+    IM --> TS
+    TS --> EB --> SC --> SA --> AD
+    CA --> SA
+    AD --> TS
+    TS --> TL
+    TL --> CP
+    TL --> CK
+    TL --> RT
+    TL --> AR
+```
 
-The canonical execution path is:
+The lifecycle is not "collect and backprop once". It is:
 
-1. resolve environment and config
-2. build the model stack
-3. collect rollout data
-4. compute contract-aware evidence and authority
-5. train on real and imagined batches
-6. apply compensation or guard logic when needed
-7. evaluate
-8. checkpoint
-9. repeat
+1. collect experience
+2. derive evidence
+3. certify the signal
+4. arbitrate authority
+5. train only on signals that survive the governance checks
+6. apply compensation when the runtime state becomes unstable
 
-The scheduler can blend real and imagined data, and the contract system can reroute or reject signals when quality changes.
+## Developer Quick Start
 
-## Key Modules
+The contract layer is intentionally usable from normal Python code.
+
+```python
+import torch
+
+from aletheia.contracts.core import make_semantic_contract, SemanticArbiter
+
+# 1. Initialize a reference value tensor.
+value_ref = torch.randn(1, 4)
+
+# 2. Build an internal contract, e.g. a world-model prediction.
+internal_contract = make_semantic_contract(
+    value=value_ref,
+    source="internal_world_model",
+    confidence=torch.full_like(value_ref, 0.8),
+    trust=torch.full_like(value_ref, 0.9),
+)
+
+# 3. Build an external contract, e.g. a ground-truth evaluator or anchor.
+external_contract = make_semantic_contract(
+    value=value_ref + 0.1,
+    source="eval_ground_truth",
+    coverage=torch.full_like(value_ref, 1.0),
+    confidence=torch.full_like(value_ref, 0.95),
+    certified_by=("task_corridor",),
+)
+
+# 4. Perform dynamic arbitration.
+arbiter = SemanticArbiter()
+decision = arbiter.arbitrate_bootstrap(
+    internal_contract=internal_contract,
+    external_contract=external_contract,
+    takeover_floor=torch.zeros_like(value_ref),
+    modulation_bonus=torch.full_like(value_ref, 0.1),
+)
+
+print("External authority weight:", decision.external_authority.mean().item())
+```
+
+The returned decision is a bounded, inspectable arbitration result. It is not just a scalar blend factor.
+
+## Main Modules
 
 ### `aletheia/contracts`
 
 This is the control plane.
 
-It defines the project’s key governance objects:
+Important objects:
 
-- `SemanticContract`
-- `EvidenceBundle`
-- `CertificationState`
-- `AuthorityDecision`
-- `SemanticArbiter`
+- [`SemanticContract`](./aletheia/contracts/core.py)
+- [`EvidenceBundle`](./aletheia/contracts/evidence.py)
+- [`CertificationState`](./aletheia/contracts/certification.py)
+- [`SemanticArbiter`](./aletheia/contracts/core.py)
+- [`AuthorityDecision`](./aletheia/contracts/authority.py)
 
-These objects encode where a signal came from, how much of it is covered, whether it is certified, and whether it should be trusted.
+These objects encode where a signal came from, how complete it is, how credible it is, and whether it is eligible to dominate the training target.
 
 ### `aletheia/training`
 
@@ -221,7 +267,7 @@ It handles:
 
 - external evaluation feedback
 - compensation phase transitions
-- persistence guards
+- persistence and release guards
 - runtime RL context
 
 ### `aletheia/aletheia_train.py`
@@ -237,7 +283,7 @@ It contains:
 - `TrainingLoop`
 - `build_training_model()`
 
-It is the place where model components, contracts, and optimizer orchestration come together.
+It is where the actor, critic, world model, router, and contract-aware training logic come together.
 
 ### `aletheia/aletheia_api.py`
 
@@ -253,6 +299,35 @@ This is the unified entrypoint.
 - handles checkpoint and artifact wiring
 
 The CLI wrapper in `scripts/cartpole_train.py` is intentionally thin.
+
+## Fail-Safe Engineering
+
+Aletheia is designed to fail closed when inputs or restore state look wrong.
+
+Examples:
+
+- checkpoint restore uses explicit restore modes and can reject config drift
+- contract tensors are bounded and shape-checked
+- telemetry and evidence are normalized before use
+- activation validation can run in strict mode
+- training can distinguish real, imagined, post-solved, and fallback phases
+
+This matters because the repository is not trying to hide uncertainty. It is trying to make uncertainty explicit enough to control.
+
+## Verification Suite
+
+The current repository state has been validated with the test suite:
+
+- `603 passed`
+- `29 subtests passed`
+
+The tests cover:
+
+- rollout collection and imagination paths
+- adaptive compensation kernels
+- telemetry and contract validation boundaries
+- checkpoint restore integrity
+- semantic contract and arbitration behavior
 
 ## Repository Layout
 
@@ -270,13 +345,6 @@ aletheia/
 scripts/
 └── cartpole_train.py # thin CLI entrypoint
 ```
-
-## Validation
-
-The current repository state has been validated with the test suite:
-
-- `603 passed`
-- `29 subtests passed`
 
 ## Quick Start
 
