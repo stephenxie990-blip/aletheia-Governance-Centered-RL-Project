@@ -422,116 +422,17 @@ def compute_bootstrap_authority_source_recertification_contract(
         1.0,
     ).clamp(0.0, 1.0)
     task_gate = contract_tensor_like(reference, task_corridor_gate, 1.0).clamp(0.0, 1.0)
-    if isinstance(critic_contract_task_degradation, Tensor):
-        task_degradation = contract_tensor_like(
-            reference,
-            critic_contract_task_degradation,
-            0.0,
-        ).clamp(0.0, 1.0)
-    else:
-        task_degradation = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_task_degradation))),
-        )
-    if isinstance(critic_contract_bootstrap_late_gate, Tensor):
-        late_gate = contract_tensor_like(
-            reference,
-            critic_contract_bootstrap_late_gate,
-            0.0,
-        ).clamp(0.0, 1.0)
-    else:
-        late_gate = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_late_gate))),
-        )
-    if isinstance(critic_contract_bootstrap_floor_value_injection_gate, Tensor):
-        floor_value_gate = contract_tensor_like(
-            reference,
-            critic_contract_bootstrap_floor_value_injection_gate,
-            1.0,
-        ).clamp(0.0, 1.0)
-    else:
-        floor_value_gate = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_floor_value_injection_gate))),
-        )
-    if isinstance(critic_contract_bootstrap_final_value_injection_gate, Tensor):
-        final_value_gate = contract_tensor_like(
-            reference,
-            critic_contract_bootstrap_final_value_injection_gate,
-            1.0,
-        ).clamp(0.0, 1.0)
-    else:
-        final_value_gate = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_final_value_injection_gate))),
-        )
-    if isinstance(critic_contract_bootstrap_source_hold_release_pressure, Tensor):
-        hold_release_pressure = contract_tensor_like(
-            reference,
-            critic_contract_bootstrap_source_hold_release_pressure,
-            0.0,
-        ).clamp(0.0, 1.0)
-    else:
-        hold_release_pressure = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_source_hold_release_pressure))),
-        )
-    if isinstance(critic_contract_bootstrap_source_hold_persistence_gate, Tensor):
-        hold_persistence_gate = contract_tensor_like(
-            reference,
-            critic_contract_bootstrap_source_hold_persistence_gate,
-            1.0,
-        ).clamp(0.0, 1.0)
-    else:
-        hold_persistence_gate = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_source_hold_persistence_gate))),
-        )
-    if isinstance(critic_contract_bootstrap_source_hold_window_activation, Tensor):
-        hold_window_activation = contract_tensor_like(
-            reference,
-            critic_contract_bootstrap_source_hold_window_activation,
-            0.0,
-        ).clamp(0.0, 1.0)
-    else:
-        hold_window_activation = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_source_hold_window_activation))),
-        )
-    if isinstance(critic_contract_bootstrap_regime_quality_gate, Tensor):
-        regime_quality_gate = contract_tensor_like(
-            reference,
-            critic_contract_bootstrap_regime_quality_gate,
-            1.0,
-        ).clamp(0.0, 1.0)
-    else:
-        regime_quality_gate = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(critic_contract_bootstrap_regime_quality_gate))),
-        )
-    if isinstance(actor_high_value_but_low_task_fraction, Tensor):
-        high_value_but_low_task_fraction = contract_tensor_like(
-            reference,
-            actor_high_value_but_low_task_fraction,
-            0.0,
-        ).clamp(0.0, 1.0)
-    else:
-        high_value_but_low_task_fraction = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(actor_high_value_but_low_task_fraction))),
-        )
-    if isinstance(actor_task_geom_corridor_disagreement, Tensor):
-        task_geom_corridor_disagreement = contract_tensor_like(
-            reference,
-            actor_task_geom_corridor_disagreement,
-            0.0,
-        ).clamp(0.0, 1.0)
-    else:
-        task_geom_corridor_disagreement = torch.full_like(
-            reference,
-            min(1.0, max(0.0, float(actor_task_geom_corridor_disagreement))),
-        )
+    # contract_tensor_like already handles both Tensor and scalar inputs
+    task_degradation = contract_tensor_like(reference, critic_contract_task_degradation, 0.0).clamp(0.0, 1.0)
+    late_gate = contract_tensor_like(reference, critic_contract_bootstrap_late_gate, 0.0).clamp(0.0, 1.0)
+    floor_value_gate = contract_tensor_like(reference, critic_contract_bootstrap_floor_value_injection_gate, 1.0).clamp(0.0, 1.0)
+    final_value_gate = contract_tensor_like(reference, critic_contract_bootstrap_final_value_injection_gate, 1.0).clamp(0.0, 1.0)
+    hold_release_pressure = contract_tensor_like(reference, critic_contract_bootstrap_source_hold_release_pressure, 0.0).clamp(0.0, 1.0)
+    hold_persistence_gate = contract_tensor_like(reference, critic_contract_bootstrap_source_hold_persistence_gate, 1.0).clamp(0.0, 1.0)
+    hold_window_activation = contract_tensor_like(reference, critic_contract_bootstrap_source_hold_window_activation, 0.0).clamp(0.0, 1.0)
+    regime_quality_gate = contract_tensor_like(reference, critic_contract_bootstrap_regime_quality_gate, 1.0).clamp(0.0, 1.0)
+    high_value_but_low_task_fraction = contract_tensor_like(reference, actor_high_value_but_low_task_fraction, 0.0).clamp(0.0, 1.0)
+    task_geom_corridor_disagreement = contract_tensor_like(reference, actor_task_geom_corridor_disagreement, 0.0).clamp(0.0, 1.0)
     contract_tensor_like(reference, corridor_semantic_corridor_mask, 0.0)
 
     bootstrap_external_authority_prefinal = torch.maximum(raw_authority, floor_authority).clamp(
