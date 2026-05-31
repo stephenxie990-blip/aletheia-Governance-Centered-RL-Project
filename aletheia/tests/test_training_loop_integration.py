@@ -25,17 +25,17 @@ from aletheia.aletheia_train import (
     _allocate_priority_budget_with_capacity,
     _apply_actor_unified_tail_relief,
     _blend_actor_unified_contract,
-    _compute_bootstrap_authority_source_replacement_contract,
-    _compute_bootstrap_authority_source_recertification_contract,
-    _compute_bootstrap_external_authority_floor_contract,
-    _compute_bootstrap_external_authority_takeover_floor_contract,
     _resolve_bootstrap_external_eval_feedback_snapshot,
-    _compute_bootstrap_task_request_contract,
     _masked_mean_tensor,
     build_training_model,
 )
 from aletheia.contracts.authority import (
+    compute_bootstrap_authority_source_recertification_contract,
+    compute_bootstrap_authority_source_replacement_contract,
+    compute_bootstrap_external_authority_floor_contract,
+    compute_bootstrap_external_authority_takeover_floor_contract,
     compute_bootstrap_external_authority_floor_live_unwind_contract,
+    compute_bootstrap_task_request_contract,
     compute_bootstrap_trigger_entry_contract,
     compute_post_transition_retention_capture,
 )
@@ -6038,7 +6038,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             )
 
         with mock.patch(
-            "aletheia.aletheia_train._compute_bootstrap_target_execution_contract",
+            "aletheia.aletheia_train.compute_bootstrap_target_execution_contract",
             side_effect=_forced_target_execution,
         ):
             batch = loop._build_imagined_batch(reference_real_batch=reference_real_batch)
@@ -7694,7 +7694,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         corridor_mask = torch.tensor([[1.0, 0.0]], dtype=torch.float32)
         semantic_debt = torch.tensor([[0.9, 0.6]], dtype=torch.float32)
 
-        alarm, disagreement, scope, floor = _compute_bootstrap_task_request_contract(
+        alarm, disagreement, scope, floor = compute_bootstrap_task_request_contract(
             real_task_alarm=real_task_alarm,
             task_support_mask=task_support_mask,
             imag_task_gate=imag_task_gate,
@@ -7856,7 +7856,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         )
 
         floor, floor_valid_mask, debt_high_mask = (
-            _compute_bootstrap_external_authority_floor_contract(
+            compute_bootstrap_external_authority_floor_contract(
                 critic_contract_bootstrap_requested_floor=requested_floor,
                 bootstrap_anchor_valid_mask=valid_mask,
                 critic_contract_bootstrap_semantic_debt=semantic_debt,
@@ -7885,7 +7885,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
         valid_mask = torch.tensor([[1.0, 0.0, 1.0]], dtype=torch.float32)
 
         takeover_floor, enforced_floor, enforcement_delta = (
-            _compute_bootstrap_external_authority_takeover_floor_contract(
+            compute_bootstrap_external_authority_takeover_floor_contract(
                 bootstrap_external_authority_floor=current_floor,
                 bootstrap_anchor_valid_mask=valid_mask,
                 critic_contract_bootstrap_requested_floor=requested_floor,
@@ -8159,7 +8159,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             )
 
         with mock.patch(
-            "aletheia.aletheia_train._compute_bootstrap_external_authority_floor_live_unwind_contract",
+            "aletheia.aletheia_train.compute_bootstrap_external_authority_floor_live_unwind_contract",
             side_effect=_forced_live_unwind,
         ):
             batch = loop._build_imagined_batch(reference_real_batch=reference_real_batch)
@@ -8211,7 +8211,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             bonus_multiplier_prerecert,
             bonus_source_certified,
             bonus_source_rejected,
-        ) = _compute_bootstrap_authority_source_replacement_contract(
+        ) = compute_bootstrap_authority_source_replacement_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             bootstrap_anchor_valid_mask=anchor_valid,
@@ -8266,7 +8266,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             bonus_multiplier_prerecert,
             bonus_source_certified,
             bonus_source_rejected,
-        ) = _compute_bootstrap_authority_source_replacement_contract(
+        ) = compute_bootstrap_authority_source_replacement_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             bootstrap_anchor_valid_mask=anchor_valid,
@@ -8312,7 +8312,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             bonus_multiplier_prerecert,
             bonus_source_certified,
             bonus_source_rejected,
-        ) = _compute_bootstrap_authority_source_replacement_contract(
+        ) = compute_bootstrap_authority_source_replacement_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             bootstrap_anchor_valid_mask=anchor_valid,
@@ -8357,7 +8357,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             bonus_multiplier_prerecert,
             bonus_source_certified,
             bonus_source_rejected,
-        ) = _compute_bootstrap_authority_source_replacement_contract(
+        ) = compute_bootstrap_authority_source_replacement_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             bootstrap_anchor_valid_mask=anchor_valid,
@@ -8399,7 +8399,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             low_bonus_multiplier_prerecert,
             _low_bonus_source_certified,
             low_bonus_source_rejected,
-        ) = _compute_bootstrap_authority_source_replacement_contract(
+        ) = compute_bootstrap_authority_source_replacement_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             bootstrap_anchor_valid_mask=anchor_valid,
@@ -8422,7 +8422,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             high_bonus_multiplier_prerecert,
             _high_bonus_source_certified,
             high_bonus_source_rejected,
-        ) = _compute_bootstrap_authority_source_replacement_contract(
+        ) = compute_bootstrap_authority_source_replacement_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             bootstrap_anchor_valid_mask=anchor_valid,
@@ -8471,7 +8471,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             bonus_multiplier_prerecert,
             bonus_source_certified,
             bonus_source_rejected,
-        ) = _compute_bootstrap_authority_source_replacement_contract(
+        ) = compute_bootstrap_authority_source_replacement_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             bootstrap_anchor_valid_mask=anchor_valid,
@@ -8517,7 +8517,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             bonus_multiplier_prerecert,
             bonus_source_certified,
             bonus_source_rejected,
-        ) = _compute_bootstrap_authority_source_replacement_contract(
+        ) = compute_bootstrap_authority_source_replacement_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             bootstrap_anchor_valid_mask=anchor_valid,
@@ -8570,7 +8570,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             bonus_multiplier_prerecert,
             bonus_source_certified,
             _bonus_source_rejected,
-        ) = _compute_bootstrap_authority_source_replacement_contract(
+        ) = compute_bootstrap_authority_source_replacement_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             bootstrap_anchor_valid_mask=anchor_valid,
@@ -12397,7 +12397,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             _midlate_gate,
             _bonus_value_coupling_gate,
             _prehold_consistency_gate,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=ones,
@@ -12437,7 +12437,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             _midlate_gate,
             _bonus_value_coupling_gate,
             _prehold_consistency_gate,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=poor_gate,
@@ -12476,7 +12476,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             _midlate_gate,
             bonus_value_coupling_gate,
             _prehold_consistency_gate,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=poor_gate,
@@ -12519,7 +12519,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             _midlate_gate,
             _bonus_value_coupling_gate,
             _prehold_consistency_gate,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=poor_gate,
@@ -12569,7 +12569,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             _midlate_gate,
             _bonus_value_coupling_gate,
             _prehold_consistency_gate,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=partial_gate,
@@ -12615,7 +12615,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             _midlate_gate,
             _bonus_value_coupling_gate,
             _prehold_consistency_gate,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=healthy_gate,
@@ -12656,7 +12656,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             _midlate_gate_low,
             bonus_value_coupling_gate_low,
             _prehold_consistency_gate_low,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=healthy_gate,
@@ -12694,7 +12694,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             _midlate_gate_healthy,
             bonus_value_coupling_gate_healthy,
             _prehold_consistency_gate_healthy,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=healthy_gate,
@@ -12764,7 +12764,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             _midlate_gate,
             bonus_value_coupling_gate,
             _prehold_consistency_gate,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=healthy_gate,
@@ -12819,7 +12819,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             midlate_gate,
             bonus_value_coupling_gate,
             _prehold_consistency_gate,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=healthy_gate,
@@ -12899,7 +12899,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             midlate_gate,
             bonus_value_coupling_gate,
             _prehold_consistency_gate,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=healthy_gate,
@@ -12969,7 +12969,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             midlate_gate,
             bonus_value_coupling_gate,
             _prehold_consistency_gate,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=ones,
@@ -13013,7 +13013,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             midlate_gate,
             bonus_value_coupling_gate,
             prehold_consistency_gate,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=ones,
@@ -13084,7 +13084,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             _midlate_gate,
             _bonus_value_coupling_gate,
             prehold_consistency_gate,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=ones,
@@ -13147,7 +13147,7 @@ class TestTrainingLoopRolloutReplayIntegration(unittest.TestCase):
             midlate_gate,
             bonus_value_coupling_gate,
             _prehold_consistency_gate,
-        ) = _compute_bootstrap_authority_source_recertification_contract(
+        ) = compute_bootstrap_authority_source_recertification_contract(
             bootstrap_external_authority_raw=raw_authority,
             bootstrap_external_authority_floor=floor,
             behavior_policy_task_cert_real_gate=healthy_gate,

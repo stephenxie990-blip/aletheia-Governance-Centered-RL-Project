@@ -149,59 +149,61 @@ from ._checkpoint_metadata import read_training_checkpoint
 from .contracts.certification import compute_task_certification_state
 from .contracts.core import contract_tensor_like
 from .contracts.authority import (
-    compute_bootstrap_authority_source_recertification_contract as _authority_compute_bootstrap_authority_source_recertification_contract,
-    compute_bootstrap_authority_source_replacement_contract as _authority_compute_bootstrap_authority_source_replacement_contract,
-    compute_bootstrap_external_authority_floor_contract as _authority_compute_bootstrap_external_authority_floor_contract,
-    compute_bootstrap_external_authority_takeover_floor_contract as _authority_compute_bootstrap_external_authority_takeover_floor_contract,
-    compute_bootstrap_external_authority_floor_live_unwind_contract as _authority_compute_bootstrap_external_authority_floor_live_unwind_contract,
-    compute_post_transition_retention_capture as _authority_compute_post_transition_retention_capture,
-    compute_bootstrap_trigger_entry_contract as _authority_compute_bootstrap_trigger_entry_contract,
-    compute_bootstrap_task_request_contract as _authority_compute_bootstrap_task_request_contract,
+    compute_bootstrap_authority_source_recertification_contract,
+    compute_bootstrap_authority_source_replacement_contract,
+    compute_bootstrap_external_authority_floor_contract,
+    compute_bootstrap_external_authority_takeover_floor_contract,
+    compute_bootstrap_external_authority_floor_live_unwind_contract,
+    compute_post_transition_retention_capture,
+    compute_bootstrap_trigger_entry_contract,
+    compute_bootstrap_task_request_contract,
 )
 from .contracts.consumers import (
-    compute_bootstrap_external_seed_assembly_contract as _consumer_compute_bootstrap_external_seed_assembly_contract,
-    compute_bootstrap_final_external_value_assembly_contract as _consumer_compute_bootstrap_final_external_value_assembly_contract,
-    compute_bootstrap_internal_value_relief_contract as _consumer_compute_bootstrap_internal_value_relief_contract,
-    compute_bootstrap_midlate_external_value_ratio_cap_contract as _consumer_compute_bootstrap_midlate_external_value_ratio_cap_contract,
-    compute_bootstrap_prehold_target_cap_contract as _consumer_compute_bootstrap_prehold_target_cap_contract,
-    compute_bootstrap_target_execution_contract as _consumer_compute_bootstrap_target_execution_contract,
-    compute_bootstrap_bonus_source_hold_persistence_contract as _consumer_compute_bootstrap_bonus_source_hold_persistence_contract,
-    compute_bootstrap_bonus_source_seed_quality_contract as _consumer_compute_bootstrap_bonus_source_seed_quality_contract,
-    compute_bootstrap_bonus_source_transition_bridge_contract as _consumer_compute_bootstrap_bonus_source_transition_bridge_contract,
-    compute_bootstrap_bonus_source_value_replacement_contract as _consumer_compute_bootstrap_bonus_source_value_replacement_contract,
-    compute_bootstrap_bonus_terminal_truth_source_contract as _consumer_compute_bootstrap_bonus_terminal_truth_source_contract,
-    compute_post_transition_certified_retention_floor_contract as _consumer_compute_post_transition_certified_retention_floor_contract,
+    compute_bootstrap_external_seed_assembly_contract,
+    compute_bootstrap_final_external_value_assembly_contract,
+    compute_bootstrap_internal_value_relief_contract,
+    compute_bootstrap_midlate_external_value_ratio_cap_contract,
+    compute_bootstrap_prehold_target_cap_contract,
+    compute_bootstrap_target_execution_contract,
+    compute_bootstrap_bonus_source_hold_persistence_contract,
+    compute_bootstrap_bonus_source_seed_quality_contract,
+    compute_bootstrap_bonus_source_transition_bridge_contract,
+    compute_bootstrap_bonus_source_value_replacement_contract,
+    compute_bootstrap_bonus_terminal_truth_source_contract,
+    compute_post_transition_certified_retention_floor_contract,
 )
 from .contracts.core import (
     SemanticArbiter,
     SemanticContract,
     select_consumer_contract_view as _select_consumer_contract_view,
 )
+from .contracts.hold_state import (
+    HOLD_CHANNELS,
+    active_hold_channel,
+    hold_state_summary,
+    hold_state_to_float,
+    make_empty_hold_state,
+    select_hold_channel_value,
+    update_hold_state_channels,
+)
 from .training.compensation import (
     CompensationDecision,
-    HOLD_CHANNELS as COMPENSATION_HOLD_CHANNELS,
     MinimalCompensationState,
-    active_hold_channel as _compensation_active_hold_channel,
     build_runtime_rl_context as _compensation_build_runtime_rl_context,
     canonicalize_compensation_phase as _canonicalize_compensation_phase,
     detect_runtime_compensation_guard_mismatch as _compensation_detect_runtime_compensation_guard_mismatch,
     export_adaptive_compensation_state as _compensation_export_adaptive_compensation_state,
     export_minimal_compensation_state,
     handle_external_eval_feedback as _compensation_handle_external_eval_feedback,
-    hold_state_summary as _compensation_hold_state_summary,
-    hold_state_to_float as _compensation_hold_state_to_float,
     initialize_compensation_runtime_state as _initialize_compensation_runtime_state,
     is_persistence_drop_confirmation_pending as _compensation_is_persistence_drop_confirmation_pending,
-    make_empty_hold_state as _compensation_make_empty_hold_state,
     resolve_adaptive_eval_confirmation_count as _compensation_resolve_adaptive_eval_confirmation_count,
     resolve_imag_compensation_phase as _compensation_resolve_imag_compensation_phase,
     resolve_imag_continue_cap as _compensation_resolve_imag_continue_cap,
     restore_adaptive_compensation_state as _compensation_restore_adaptive_compensation_state,
     restore_minimal_compensation_state,
-    select_hold_channel_value as _compensation_select_hold_channel_value,
     summarize_compensation_restore_report as _compensation_summarize_compensation_restore_report,
     update_adaptive_eval_confirmation as _compensation_update_adaptive_eval_confirmation,
-    update_hold_state_channels as _compensation_update_hold_state_channels,
 )
 from .training.runtime_helpers import (
     is_trigger_persistence_handoff_landing_guard_active as _training_is_trigger_persistence_handoff_landing_guard_active,
@@ -355,13 +357,6 @@ def _compute_task_cert_gate(
     )
 
 
-_HOLD_CHANNELS = COMPENSATION_HOLD_CHANNELS
-_make_empty_hold_state = _compensation_make_empty_hold_state
-_hold_state_to_float = _compensation_hold_state_to_float
-_active_hold_channel = _compensation_active_hold_channel
-_select_hold_channel_value = _compensation_select_hold_channel_value
-_update_hold_state_channels = _compensation_update_hold_state_channels
-_hold_state_summary = _compensation_hold_state_summary
 
 
 def _resolve_bootstrap_external_eval_feedback_snapshot(
@@ -435,66 +430,6 @@ def _resolve_bootstrap_external_eval_feedback_snapshot(
         resolved_age_steps,
     )
 
-# Canonical contract helpers live in `aletheia.contracts.*` and
-# `aletheia.training.compensation`. The public `_...` names below are kept
-# solely as compatibility aliases for existing train/test call sites.
-_compute_bootstrap_task_request_contract = (
-    _authority_compute_bootstrap_task_request_contract
-)
-_compute_bootstrap_external_authority_floor_contract = (
-    _authority_compute_bootstrap_external_authority_floor_contract
-)
-_compute_bootstrap_external_authority_takeover_floor_contract = (
-    _authority_compute_bootstrap_external_authority_takeover_floor_contract
-)
-_compute_bootstrap_external_authority_floor_live_unwind_contract = (
-    _authority_compute_bootstrap_external_authority_floor_live_unwind_contract
-)
-_compute_bootstrap_authority_source_recertification_contract = (
-    _authority_compute_bootstrap_authority_source_recertification_contract
-)
-_compute_bootstrap_authority_source_replacement_contract = (
-    _authority_compute_bootstrap_authority_source_replacement_contract
-)
-_compute_bootstrap_external_seed_assembly_contract = (
-    _consumer_compute_bootstrap_external_seed_assembly_contract
-)
-_compute_bootstrap_bonus_source_value_replacement_contract = (
-    _consumer_compute_bootstrap_bonus_source_value_replacement_contract
-)
-_compute_bootstrap_bonus_terminal_truth_source_contract = (
-    _consumer_compute_bootstrap_bonus_terminal_truth_source_contract
-)
-_compute_bootstrap_bonus_source_transition_bridge_contract = (
-    _consumer_compute_bootstrap_bonus_source_transition_bridge_contract
-)
-_compute_bootstrap_bonus_source_seed_quality_contract = (
-    _consumer_compute_bootstrap_bonus_source_seed_quality_contract
-)
-_compute_post_transition_certified_retention_floor_contract = (
-    _consumer_compute_post_transition_certified_retention_floor_contract
-)
-_compute_bootstrap_bonus_source_hold_persistence_contract = (
-    _consumer_compute_bootstrap_bonus_source_hold_persistence_contract
-)
-_compute_bootstrap_final_external_value_assembly_contract = (
-    _consumer_compute_bootstrap_final_external_value_assembly_contract
-)
-_compute_bootstrap_internal_value_relief_contract = (
-    _consumer_compute_bootstrap_internal_value_relief_contract
-)
-_compute_bootstrap_midlate_external_value_ratio_cap_contract = (
-    _consumer_compute_bootstrap_midlate_external_value_ratio_cap_contract
-)
-_compute_bootstrap_prehold_target_cap_contract = (
-    _consumer_compute_bootstrap_prehold_target_cap_contract
-)
-_compute_bootstrap_target_execution_contract = (
-    _consumer_compute_bootstrap_target_execution_contract
-)
-_compute_bootstrap_trigger_entry_contract = (
-    _authority_compute_bootstrap_trigger_entry_contract
-)
 
 
 def _allocate_priority_budget_with_capacity(
@@ -13496,7 +13431,7 @@ class TrainingLoop:
         if critic_contract_bootstrap_enabled <= 0.0:
             self._adaptive_imag_critic_bootstrap_semantic_debt_state = 0.0
             self._adaptive_imag_critic_bootstrap_contact_surface_state = 0.0
-            self._adaptive_imag_critic_bootstrap_bonus_hold_state = _make_empty_hold_state()
+            self._adaptive_imag_critic_bootstrap_bonus_hold_state = make_empty_hold_state()
             self._adaptive_imag_critic_bootstrap_post_transition_certified_floor_state = 0.0
             critic_contract_bootstrap_state = 0.0
             critic_contract_bootstrap_surface_state = 0.0
@@ -13779,11 +13714,11 @@ class TrainingLoop:
         )
         critic_contract_bootstrap_source_consumer_retention_gate_mean = 0.0
         critic_contract_bootstrap_bonus_hold_state_mean = float(
-            _hold_state_to_float(
+            hold_state_to_float(
                 getattr(
                     self,
                     "_adaptive_imag_critic_bootstrap_bonus_hold_state",
-                    _make_empty_hold_state(),
+                    make_empty_hold_state(),
                 )
             )
         )
@@ -14734,7 +14669,7 @@ class TrainingLoop:
                     dim=1,
                 ).detach()
                 bootstrap_seed_assembly = (
-                    _compute_bootstrap_external_seed_assembly_contract(
+                    compute_bootstrap_external_seed_assembly_contract(
                         raw_anchor_bootstrap_values_next=raw_anchor_bootstrap_values_next.detach(),
                         raw_bootstrap_values_next=raw_bootstrap_values_next.detach(),
                         critic_anchor_available_next=critic_anchor_available_next.detach(),
@@ -14785,7 +14720,7 @@ class TrainingLoop:
                     critic_contract_bootstrap_trigger_gate,
                     critic_contract_bootstrap_late_gate,
                     critic_contract_bootstrap_precontact_gate,
-                ) = _compute_bootstrap_trigger_entry_contract(
+                ) = compute_bootstrap_trigger_entry_contract(
                     external_eval_best_mean=external_eval_best_mean,
                     external_eval_last_mean=external_eval_last_mean,
                     real_reward_degradation=real_reward_degradation,
@@ -15061,7 +14996,7 @@ class TrainingLoop:
                     critic_contract_bootstrap_task_request_disagreement,
                     critic_contract_bootstrap_task_request_scope,
                     critic_contract_bootstrap_task_request_floor,
-                ) = _compute_bootstrap_task_request_contract(
+                ) = compute_bootstrap_task_request_contract(
                     real_task_alarm=behavior_policy_task_cert_real_alarm,
                     task_support_mask=behavior_policy_task_cert_support_mask,
                     imag_task_gate=behavior_policy_task_cert_imag_gate,
@@ -15212,7 +15147,7 @@ class TrainingLoop:
                     bootstrap_external_authority_floor,
                     bootstrap_external_authority_floor_valid_mask,
                     bootstrap_external_authority_debt_high_mask,
-                ) = _compute_bootstrap_external_authority_floor_contract(
+                ) = compute_bootstrap_external_authority_floor_contract(
                     critic_contract_bootstrap_requested_floor=critic_contract_bootstrap_requested_floor,
                     bootstrap_anchor_valid_mask=bootstrap_anchor_valid_mask,
                     critic_contract_bootstrap_semantic_debt=critic_contract_bootstrap_semantic_debt.detach(),
@@ -15223,7 +15158,7 @@ class TrainingLoop:
                     _bootstrap_external_authority_takeover_floor_seed,
                     bootstrap_external_authority_floor,
                     _bootstrap_external_authority_takeover_enforcement_delta_abs_seed,
-                ) = _compute_bootstrap_external_authority_takeover_floor_contract(
+                ) = compute_bootstrap_external_authority_takeover_floor_contract(
                     bootstrap_external_authority_floor=bootstrap_external_authority_floor,
                     bootstrap_anchor_valid_mask=bootstrap_anchor_valid_mask,
                     critic_contract_bootstrap_requested_floor=critic_contract_bootstrap_requested_floor.detach(),
@@ -15248,7 +15183,7 @@ class TrainingLoop:
                     bootstrap_external_authority_bonus_multiplier_prerecert,
                     bootstrap_external_authority_bonus_source_certified,
                     bootstrap_external_authority_bonus_source_rejected,
-                ) = _compute_bootstrap_authority_source_replacement_contract(
+                ) = compute_bootstrap_authority_source_replacement_contract(
                     bootstrap_external_authority_raw=bootstrap_external_authority_raw_view,
                     bootstrap_external_authority_floor=bootstrap_external_authority_floor,
                     bootstrap_anchor_valid_mask=bootstrap_anchor_valid_mask,
@@ -15310,7 +15245,7 @@ class TrainingLoop:
                     critic_contract_bootstrap_source_seed_quality_gate,
                     bootstrap_external_bonus_value_source_seeded,
                     bootstrap_external_bonus_value_source_seed_delta_abs,
-                ) = _compute_bootstrap_bonus_source_seed_quality_contract(
+                ) = compute_bootstrap_bonus_source_seed_quality_contract(
                     bootstrap_external_value_seed=bootstrap_external_value_view.detach(),
                     raw_anchor_bootstrap_values_next=raw_anchor_bootstrap_values_next.detach(),
                     raw_bootstrap_values_next=raw_bootstrap_values_next.detach(),
@@ -15354,7 +15289,7 @@ class TrainingLoop:
                     critic_contract_bootstrap_source_transition_bridge_gate,
                     bootstrap_external_bonus_value_transition_bridged,
                     bootstrap_external_bonus_value_transition_delta_abs,
-                ) = _compute_bootstrap_bonus_source_transition_bridge_contract(
+                ) = compute_bootstrap_bonus_source_transition_bridge_contract(
                     bootstrap_external_value_raw=bootstrap_external_value_view,
                     raw_anchor_bootstrap_values_next=raw_anchor_bootstrap_values_next.detach(),
                     raw_bootstrap_values_next=raw_bootstrap_values_next.detach(),
@@ -15409,7 +15344,7 @@ class TrainingLoop:
                     critic_contract_bootstrap_source_terminal_anchor_preference,
                     bootstrap_external_bonus_terminal_truth_source,
                     bootstrap_external_bonus_terminal_truth_delta_abs,
-                ) = _compute_bootstrap_bonus_terminal_truth_source_contract(
+                ) = compute_bootstrap_bonus_terminal_truth_source_contract(
                     bootstrap_external_value_raw=bootstrap_external_bonus_value_transition_bridged,
                     raw_anchor_bootstrap_values_next=raw_anchor_bootstrap_values_next.detach(),
                     raw_bootstrap_values_next=raw_bootstrap_values_next.detach(),
@@ -15424,11 +15359,11 @@ class TrainingLoop:
                     task_corridor_gate=task_corridor_gate.detach(),
                     critic_contract_task_degradation=critic_contract_task_degradation,
                     critic_contract_bootstrap_late_gate=critic_contract_bootstrap_late_gate,
-                    critic_contract_bootstrap_bonus_hold_state=_hold_state_to_float(
+                    critic_contract_bootstrap_bonus_hold_state=hold_state_to_float(
                         getattr(
                             self,
                             "_adaptive_imag_critic_bootstrap_bonus_hold_state",
-                            _make_empty_hold_state(),
+                            make_empty_hold_state(),
                         )
                     ),
                     critic_contract_bootstrap_raw_vs_clean_gap=critic_contract_bootstrap_raw_vs_clean_gap.detach(),
@@ -15483,7 +15418,7 @@ class TrainingLoop:
                     critic_contract_bootstrap_source_value_bonus_gate,
                     bootstrap_external_bonus_value_source_replaced,
                     bootstrap_external_bonus_value_delta_abs,
-                ) = _compute_bootstrap_bonus_source_value_replacement_contract(
+                ) = compute_bootstrap_bonus_source_value_replacement_contract(
                     bootstrap_external_value_raw=bootstrap_external_bonus_value_transition_bridged,
                     raw_anchor_bootstrap_values_next=raw_anchor_bootstrap_values_next.detach(),
                     raw_bootstrap_values_next=raw_bootstrap_values_next.detach(),
@@ -15617,12 +15552,12 @@ class TrainingLoop:
                 prev_bonus_hold_state = getattr(
                     self,
                     "_adaptive_imag_critic_bootstrap_bonus_hold_state",
-                    _make_empty_hold_state(),
+                    make_empty_hold_state(),
                 )
                 if not isinstance(prev_bonus_hold_state, dict):
                     prev_bonus_hold_state = {
                         channel: float(prev_bonus_hold_state)
-                        for channel in _HOLD_CHANNELS
+                        for channel in HOLD_CHANNELS
                     }
                 current_late_gate_mean = float(
                     min(1.0, max(0.0, critic_contract_bootstrap_late_gate))
@@ -15642,7 +15577,7 @@ class TrainingLoop:
                         max(
                             (1.0 - source_hold_release_pressure_mean)
                             * 0.95
-                            * _select_hold_channel_value(
+                            * select_hold_channel_value(
                                 prev_bonus_hold_state,
                                 current_late_gate_mean,
                             ),
@@ -15651,7 +15586,7 @@ class TrainingLoop:
                     )
                 )
                 self._adaptive_imag_critic_bootstrap_bonus_hold_state = (
-                    _update_hold_state_channels(
+                    update_hold_state_channels(
                         prev_bonus_hold_state,
                         current_late_gate_mean,
                         channel_new_value,
@@ -15659,7 +15594,7 @@ class TrainingLoop:
                     )
                 )
                 critic_contract_bootstrap_bonus_hold_state = (
-                    _select_hold_channel_value(
+                    select_hold_channel_value(
                         self._adaptive_imag_critic_bootstrap_bonus_hold_state,
                         current_late_gate_mean,
                     )
@@ -15670,7 +15605,7 @@ class TrainingLoop:
                 hold_state_channels = getattr(
                     self,
                     "_adaptive_imag_critic_bootstrap_bonus_hold_state",
-                    _make_empty_hold_state(),
+                    make_empty_hold_state(),
                 )
                 raw_active_transition_hold_state = float(
                     hold_state_channels.get("active_transition", 0.0)
@@ -15693,7 +15628,7 @@ class TrainingLoop:
                 critic_contract_bootstrap_post_transition_historical_authority = 0.0
                 critic_contract_bootstrap_post_transition_capture_support = 0.0
                 critic_contract_bootstrap_post_transition_certified_capture_source = 0.0
-                post_transition_capture = _authority_compute_post_transition_retention_capture(
+                post_transition_capture = compute_post_transition_retention_capture(
                     late_gate_mean=current_late_gate_mean,
                     active_hold_state=raw_active_transition_hold_state,
                     post_hold_state=raw_post_transition_hold_state,
@@ -15722,7 +15657,7 @@ class TrainingLoop:
                     critic_contract_bootstrap_post_transition_certified_floor_state,
                     critic_contract_bootstrap_post_transition_hold_state_floored,
                     _bootstrap_post_transition_persistence_floor_prehold,
-                ) = _compute_post_transition_certified_retention_floor_contract(
+                ) = compute_post_transition_certified_retention_floor_contract(
                     critic_contract_bootstrap_late_gate=current_late_gate_mean,
                     critic_contract_bootstrap_trigger_gate=critic_contract_bootstrap_trigger_gate,
                     critic_contract_bootstrap_hold_state_active_transition=raw_active_transition_hold_state,
@@ -15753,7 +15688,7 @@ class TrainingLoop:
                     critic_contract_bootstrap_source_hold_persistence_gate,
                     bootstrap_external_bonus_value_hold_persisted,
                     bootstrap_external_bonus_value_hold_delta_abs,
-                ) = _compute_bootstrap_bonus_source_hold_persistence_contract(
+                ) = compute_bootstrap_bonus_source_hold_persistence_contract(
                     bootstrap_external_bonus_value_source_replaced=bootstrap_external_bonus_value_source_replaced,
                     bootstrap_external_bonus_value_transition_bridged=bootstrap_external_bonus_value_transition_bridged,
                     raw_anchor_bootstrap_values_next=raw_anchor_bootstrap_values_next.detach(),
@@ -15837,7 +15772,7 @@ class TrainingLoop:
                     critic_contract_bootstrap_post_transition_certified_floor_state,
                     critic_contract_bootstrap_post_transition_hold_state_floored,
                     critic_contract_bootstrap_post_transition_persistence_gate_floored,
-                ) = _compute_post_transition_certified_retention_floor_contract(
+                ) = compute_post_transition_certified_retention_floor_contract(
                     critic_contract_bootstrap_late_gate=current_late_gate_mean,
                     critic_contract_bootstrap_trigger_gate=critic_contract_bootstrap_trigger_gate,
                     critic_contract_bootstrap_hold_state_active_transition=raw_active_transition_hold_state,
@@ -15874,7 +15809,7 @@ class TrainingLoop:
                     bootstrap_external_bonus_value_hold_delta_abs.mean().item()
                 )
                 final_external_value_assembly = (
-                    _compute_bootstrap_final_external_value_assembly_contract(
+                    compute_bootstrap_final_external_value_assembly_contract(
                         bootstrap_external_bonus_value_hold_persisted=bootstrap_external_bonus_value_hold_persisted,
                         bootstrap_external_bonus_terminal_truth_source=bootstrap_external_bonus_terminal_truth_source.detach(),
                         bootstrap_external_bonus_value_source_replaced=bootstrap_external_bonus_value_source_replaced.detach(),
@@ -15998,7 +15933,7 @@ class TrainingLoop:
                     critic_contract_bootstrap_midlate_bonus_alignment_gate,
                     critic_contract_bootstrap_bonus_value_coupling_gate,
                     critic_contract_bootstrap_prehold_consistency_gate,
-                ) = _compute_bootstrap_authority_source_recertification_contract(
+                ) = compute_bootstrap_authority_source_recertification_contract(
                     bootstrap_external_authority_raw=bootstrap_external_authority_source_replaced,
                     bootstrap_external_authority_floor=bootstrap_external_authority_floor,
                     behavior_policy_task_cert_real_gate=behavior_policy_task_cert_real_gate,
@@ -16570,7 +16505,7 @@ class TrainingLoop:
                     critic_contract_bootstrap_floor_live_unwind_gate,
                     bootstrap_external_authority_floor,
                     bootstrap_external_authority_floor_live_unwind_delta_abs,
-                ) = _compute_bootstrap_external_authority_floor_live_unwind_contract(
+                ) = compute_bootstrap_external_authority_floor_live_unwind_contract(
                     bootstrap_external_authority_floor=bootstrap_external_authority_floor.detach(),
                     critic_contract_bootstrap_requested_floor=critic_contract_bootstrap_requested_floor.detach(),
                     critic_contract_bootstrap_late_gate=critic_contract_bootstrap_late_gate,
@@ -16584,7 +16519,7 @@ class TrainingLoop:
                     bootstrap_external_authority_takeover_floor,
                     bootstrap_external_authority_floor,
                     bootstrap_external_authority_takeover_enforcement_delta_abs,
-                ) = _compute_bootstrap_external_authority_takeover_floor_contract(
+                ) = compute_bootstrap_external_authority_takeover_floor_contract(
                     bootstrap_external_authority_floor=bootstrap_external_authority_floor.detach(),
                     bootstrap_anchor_valid_mask=bootstrap_anchor_valid_mask.detach(),
                     critic_contract_bootstrap_requested_floor=critic_contract_bootstrap_requested_floor.detach(),
@@ -16710,7 +16645,7 @@ class TrainingLoop:
                                 raw_bootstrap_values_next.detach(),
                                 float(real_value_cap_scalar.item()),
                             )
-                bootstrap_target_execution = _compute_bootstrap_target_execution_contract(
+                bootstrap_target_execution = compute_bootstrap_target_execution_contract(
                     bootstrap_external_authority_view=bootstrap_external_authority_view.detach(),
                     bootstrap_external_authority_floor=bootstrap_external_authority_floor.detach(),
                     bootstrap_external_floor_value_clamped=bootstrap_external_floor_value_clamped.detach(),
@@ -18890,11 +18825,11 @@ class TrainingLoop:
                     f"critic/critic_contract_bootstrap_{channel_key}": float(
                         channel_value
                     )
-                    for channel_key, channel_value in _hold_state_summary(
+                    for channel_key, channel_value in hold_state_summary(
                         getattr(
                             self,
                             "_adaptive_imag_critic_bootstrap_bonus_hold_state",
-                            _make_empty_hold_state(),
+                            make_empty_hold_state(),
                         )
                     ).items()
                 },

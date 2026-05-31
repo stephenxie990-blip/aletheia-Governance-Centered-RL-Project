@@ -4,9 +4,9 @@ from types import SimpleNamespace
 import torch
 
 from aletheia.aletheia_config import TrainingConfig
-from aletheia.aletheia_train import (
-    _compute_bootstrap_trigger_entry_contract,
-    _compute_bootstrap_task_request_contract,
+from aletheia.contracts.authority import (
+    compute_bootstrap_trigger_entry_contract,
+    compute_bootstrap_task_request_contract,
 )
 from aletheia.contracts.consumers import (
     compute_bootstrap_bonus_consumer_retention_contract,
@@ -130,7 +130,7 @@ class TestContractConvergence(unittest.TestCase):
 
     def test_train_helper_aliases_now_point_to_contract_modules(self):
         self.assertEqual(
-            _compute_bootstrap_task_request_contract.__module__,
+            compute_bootstrap_task_request_contract.__module__,
             "aletheia.contracts.authority",
         )
         self.assertEqual(
@@ -138,7 +138,7 @@ class TestContractConvergence(unittest.TestCase):
             "aletheia.contracts.consumers",
         )
         self.assertEqual(
-            _compute_bootstrap_trigger_entry_contract.__module__,
+            compute_bootstrap_trigger_entry_contract.__module__,
             "aletheia.contracts.authority",
         )
 
